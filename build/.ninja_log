@@ -1622,3 +1622,83 @@
 14081	14372	7751197348171932	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/.bin_timestamp	5222d4d1481d1d82
 14372	14472	7751197348211641	esp-idf/esptool_py/CMakeFiles/app_check_size	20e60e3eeb46ea59
 14372	14472	7751197348211641	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/esp-idf/esptool_py/CMakeFiles/app_check_size	20e60e3eeb46ea59
+385	676	7751285109870382	esp-idf/esptool_py/CMakeFiles/app_check_size	20e60e3eeb46ea59
+385	676	7751285109870382	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/esp-idf/esptool_py/CMakeFiles/app_check_size	20e60e3eeb46ea59
+379	904	7751285109810684	bootloader-prefix/src/bootloader-stamp/bootloader-build	80b242516eef5071
+379	904	7751285109810684	bootloader/bootloader.elf	80b242516eef5071
+379	904	7751285109810684	bootloader/bootloader.bin	80b242516eef5071
+379	904	7751285109810684	bootloader/bootloader.map	80b242516eef5071
+379	904	7751285109810684	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-build	80b242516eef5071
+379	904	7751285109810684	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/bootloader.elf	80b242516eef5071
+379	904	7751285109810684	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/bootloader.bin	80b242516eef5071
+379	904	7751285109810684	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/bootloader.map	80b242516eef5071
+904	961	7751285115060927	bootloader-prefix/src/bootloader-stamp/bootloader-install	24bc19236c6ccbc6
+904	961	7751285115060927	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-install	24bc19236c6ccbc6
+962	1017	7751285115640101	CMakeFiles/bootloader-complete	bfb0ffd189d0ea98
+962	1017	7751285115640101	bootloader-prefix/src/bootloader-stamp/bootloader-done	bfb0ffd189d0ea98
+962	1017	7751285115640101	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/CMakeFiles/bootloader-complete	bfb0ffd189d0ea98
+962	1017	7751285115640101	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-done	bfb0ffd189d0ea98
+197	369	7751315429340470	esp-idf/esptool_py/CMakeFiles/app_check_size	20e60e3eeb46ea59
+197	369	7751315429340470	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/esp-idf/esptool_py/CMakeFiles/app_check_size	20e60e3eeb46ea59
+191	558	7751315429278693	bootloader-prefix/src/bootloader-stamp/bootloader-build	80b242516eef5071
+191	558	7751315429278693	bootloader/bootloader.elf	80b242516eef5071
+191	558	7751315429278693	bootloader/bootloader.bin	80b242516eef5071
+191	558	7751315429278693	bootloader/bootloader.map	80b242516eef5071
+191	558	7751315429278693	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-build	80b242516eef5071
+191	558	7751315429278693	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/bootloader.elf	80b242516eef5071
+191	558	7751315429278693	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/bootloader.bin	80b242516eef5071
+191	558	7751315429278693	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/bootloader.map	80b242516eef5071
+558	587	7751315432956302	bootloader-prefix/src/bootloader-stamp/bootloader-install	24bc19236c6ccbc6
+558	587	7751315432956302	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-install	24bc19236c6ccbc6
+587	641	7751315433236292	CMakeFiles/bootloader-complete	bfb0ffd189d0ea98
+587	641	7751315433236292	bootloader-prefix/src/bootloader-stamp/bootloader-done	bfb0ffd189d0ea98
+587	641	7751315433236292	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/CMakeFiles/bootloader-complete	bfb0ffd189d0ea98
+587	641	7751315433236292	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-done	bfb0ffd189d0ea98
+146	268	7751316311803129	esp-idf/esptool_py/CMakeFiles/app_check_size	20e60e3eeb46ea59
+146	268	7751316311803129	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/esp-idf/esptool_py/CMakeFiles/app_check_size	20e60e3eeb46ea59
+140	268	7751316311741044	bootloader-prefix/src/bootloader-stamp/bootloader-build	80b242516eef5071
+140	268	7751316311741044	bootloader/bootloader.elf	80b242516eef5071
+140	268	7751316311741044	bootloader/bootloader.bin	80b242516eef5071
+140	268	7751316311741044	bootloader/bootloader.map	80b242516eef5071
+140	268	7751316311741044	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-build	80b242516eef5071
+140	268	7751316311741044	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/bootloader.elf	80b242516eef5071
+140	268	7751316311741044	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/bootloader.bin	80b242516eef5071
+140	268	7751316311741044	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/bootloader.map	80b242516eef5071
+269	294	7751316313041729	bootloader-prefix/src/bootloader-stamp/bootloader-install	24bc19236c6ccbc6
+269	294	7751316313041729	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-install	24bc19236c6ccbc6
+294	346	7751316313292705	CMakeFiles/bootloader-complete	bfb0ffd189d0ea98
+294	346	7751316313292705	bootloader-prefix/src/bootloader-stamp/bootloader-done	bfb0ffd189d0ea98
+294	346	7751316313292705	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/CMakeFiles/bootloader-complete	bfb0ffd189d0ea98
+294	346	7751316313292705	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-done	bfb0ffd189d0ea98
+303	390	7751317666394589	esp-idf/esptool_py/CMakeFiles/app_check_size	20e60e3eeb46ea59
+303	390	7751317666394589	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/esp-idf/esptool_py/CMakeFiles/app_check_size	20e60e3eeb46ea59
+296	431	7751317666333020	bootloader-prefix/src/bootloader-stamp/bootloader-build	80b242516eef5071
+296	431	7751317666333020	bootloader/bootloader.elf	80b242516eef5071
+296	431	7751317666333020	bootloader/bootloader.bin	80b242516eef5071
+296	431	7751317666333020	bootloader/bootloader.map	80b242516eef5071
+296	431	7751317666333020	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-build	80b242516eef5071
+296	431	7751317666333020	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/bootloader.elf	80b242516eef5071
+296	431	7751317666333020	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/bootloader.bin	80b242516eef5071
+296	431	7751317666333020	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/bootloader.map	80b242516eef5071
+432	458	7751317667691932	bootloader-prefix/src/bootloader-stamp/bootloader-install	24bc19236c6ccbc6
+432	458	7751317667691932	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-install	24bc19236c6ccbc6
+458	515	7751317667946244	CMakeFiles/bootloader-complete	bfb0ffd189d0ea98
+458	515	7751317667946244	bootloader-prefix/src/bootloader-stamp/bootloader-done	bfb0ffd189d0ea98
+458	515	7751317667946244	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/CMakeFiles/bootloader-complete	bfb0ffd189d0ea98
+458	515	7751317667946244	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-done	bfb0ffd189d0ea98
+67	191	7751318127890691	esp-idf/esptool_py/CMakeFiles/app_check_size	20e60e3eeb46ea59
+67	191	7751318127890691	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/esp-idf/esptool_py/CMakeFiles/app_check_size	20e60e3eeb46ea59
+61	240	7751318127830976	bootloader-prefix/src/bootloader-stamp/bootloader-build	80b242516eef5071
+61	240	7751318127830976	bootloader/bootloader.elf	80b242516eef5071
+61	240	7751318127830976	bootloader/bootloader.bin	80b242516eef5071
+61	240	7751318127830976	bootloader/bootloader.map	80b242516eef5071
+61	240	7751318127830976	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-build	80b242516eef5071
+61	240	7751318127830976	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/bootloader.elf	80b242516eef5071
+61	240	7751318127830976	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/bootloader.bin	80b242516eef5071
+61	240	7751318127830976	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/bootloader.map	80b242516eef5071
+240	267	7751318129619357	bootloader-prefix/src/bootloader-stamp/bootloader-install	24bc19236c6ccbc6
+240	267	7751318129619357	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-install	24bc19236c6ccbc6
+267	322	7751318129881397	CMakeFiles/bootloader-complete	bfb0ffd189d0ea98
+267	322	7751318129881397	bootloader-prefix/src/bootloader-stamp/bootloader-done	bfb0ffd189d0ea98
+267	322	7751318129881397	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/CMakeFiles/bootloader-complete	bfb0ffd189d0ea98
+267	322	7751318129881397	D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-done	bfb0ffd189d0ea98

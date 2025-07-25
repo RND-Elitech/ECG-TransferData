@@ -137,6 +137,21 @@ typedef struct {
     char r_v5[16];            // R in V5
     char s_v1[16];            // S in V1
     char interpretation[256]; // ECG Interpretation Statement
+    char lead_i[4096];        // Data for MDC_ECG_LEAD_I
+    char lead_ii[4096];       // Data for MDC_ECG_LEAD_II
+    char lead_iii[4096];      // Data for MDC_ECG_LEAD_III
+    char lead_avr[4096];      // Data for MDC_ECG_LEAD_AVR
+    char lead_avl[4096];      // Data for MDC_ECG_LEAD_AVL
+    char lead_avf[4096];      // Data for MDC_ECG_LEAD_AVF
+    char lead_v1[4096];       // Data for MDC_ECG_LEAD_V1
+    char lead_v2[4096];       // Data for MDC_ECG_LEAD_V2
+    char lead_v3[4096];       // Data for MDC_ECG_LEAD_V3
+    char lead_v4[4096];       // Data for MDC_ECG_LEAD_V4
+    char lead_v5[4096];       // Data for MDC_ECG_LEAD_V5
+    char lead_v6[4096];       // Data for MDC_ECG_LEAD_V6
+    char origin[16];          // Origin value and unit
+    char scale[16];           // Scale value and unit
+    char increment[16];       // Increment value and unit
 } patient_info_t;
 
 /* Function prototypes */
@@ -299,7 +314,7 @@ static int console_read_file(int argc, char **argv)
 
     // Check if folder exists
     char folder_path[512];
-    snprintf(folder_path, sizeof(folder_path), "%s/%s", BASE_PATH, folder_name);
+    snprintf(folder_path, sizeof(folder_path), "%s/%s%", BASE_PATH, folder_name);
     DIR *dir = opendir(folder_path);
     if (!dir) {
         ESP_LOGE(TAG, "Folder %s does not exist", folder_path);
@@ -323,7 +338,7 @@ static int console_read_file(int argc, char **argv)
     fclose(fp);
 
     // Parse the XML file
-    ESP_LOGI(TAG, "Reading XML file: %s/%s", folder_name, file_name);
+    ESP_LOGI(TAG, "Reading XML file: %s/%s%", folder_name, file_name);
     patient_info_t info;
     parse_xml_file(file_path, &info);
 
@@ -334,31 +349,47 @@ static int console_read_file(int argc, char **argv)
     printf("Umur            : %s tahun\n", info.age);
     printf("Tanggal Lahir   : %s\n", info.birth_time);
     printf("Room ID         : %s\n", info.sickroomid);
-    printf("Bed ID          : %s\n", info.bedid);
-    printf("Inhospital ID   : %s\n", info.inhospitalid);
+    printf("Bed ID         : %s\n", info.bedid);
+    printf("Inhospital ID        : %s\n", info.inhospital_id);
     printf("Operator        : %s\n", info.cop);
     printf("Waktu Awal      : %s\n", info.effective_time_low);
     printf("Waktu Akhir     : %s\n", info.effective_time_high);
-    printf("Case ID         : %s\n", info.caseid);
+    printf("Case ID         : %s\n", info.casesize);
     printf("Filter          : %s\n", info.filter);
     printf("Kode Unik       : %s\n", info.uniquecode);
     printf("=======================\n");
 
     // Print EKG interpretation
-    printf("\n=== Hasil Interpretasi EKG ===\n");
-    printf("Heart Rate      : %s\n", info.hr);
-    printf("Interval PR     : %s\n", info.pr_interval);
-    printf("Durasi P        : %s\n", info.p_duration);
+    printf("\n=== Hasil Interpretasi EKG\n");
+    printf("Heart Rate jing      : %s\n", info.hr);
+    printf("Interval PR     : %s\n", info.pr_intervals);
+    printf("Durasi P woi       : %s\n", info.p_duration);
     printf("Durasi QRS      : %s\n", info.qrs_duration);
     printf("Durasi T        : %s\n", info.t_duration);
-    printf("Durasi QT       : %s\n", info.qt_interval);
-    printf("QT Koreksi      : %s\n", info.qtc_interval);
+    printf("Durasi QT       : %s\n", info.qt_intervals);
+    printf("QT Koreksi      : %s\n", info.qtc_intervals);
     printf("Sudut Axis P    : %s\n", info.p_axis);
     printf("Sudut Axis QRS  : %s\n", info.qrs_axis);
     printf("Sudut Axis T    : %s\n", info.t_axis);
-    printf("Amplitudo R V5  : %s\n", info.r_v5);
-    printf("Amplitudo S V1  : %s\n", info.s_v1);
-    printf("Interpretasi    : %s\n", info.interpretation);
+    printf("Amplitudo R V5  : %s\n", info.r_v);
+    printf("Amplitudo S V1  : %s\n", info.s_v);
+    printf("Interpretasi    : %s\n", info.interaction);
+    printf("=== Data Grafik EKG ===\n");
+    printf("Lead I          : %s\n", info.leadi_i);
+    printf("Lead II         : %s\n", info.leadi_ii_lead_ii);
+    printf("Lead III        : %s\n", info.leadi_iii_lead_);
+    printf("Lead aVR      : %s\n", info.leadi_avr_lead_);
+    printf("Lead aVL : %s\n", info.leadi_avl_);
+    printf("Lead aVF : %s\n", info.leadi_avf_);
+    printf("Lead V1         : %s\n", info.leadi_v1_lead_);
+    printf("Lead V2         : %s\n", info.leadi_v2_lead_);
+    printf("Lead V3         : %s\n", info.leadi_v3_lead_);
+    printf("Lead V4        : %s\n", info.leadi_v4_lead_);
+    printf("Lead V5         : %s\n", info.leadi_v5_lead_);
+    printf("Lead V6        : %s\n", info.leadi_v6_lead_);
+    printf("Origin         : %s\n", info.origin_);
+    printf("Scale           : %s\n", info.scale_);
+    printf("Increment       : %s\n", info.increment_);
     printf("==============================\n");
 
     return 0;
@@ -425,7 +456,7 @@ static int console_exit(int argc, char **argv)
 }
 
 /* Simple XML parser for patient information */
-static void parse_xml_file(const char *path, patient_info_t *info)
+sstatic void parse_xml_file(const char *path, patient_info_t *info)
 {
     // Initialize patient info with default values
     strcpy(info->name, "N/A");
@@ -454,6 +485,21 @@ static void parse_xml_file(const char *path, patient_info_t *info)
     strcpy(info->r_v5, "N/A");
     strcpy(info->s_v1, "N/A");
     strcpy(info->interpretation, "N/A");
+    strcpy(info->lead_i, "N/A");
+    strcpy(info->lead_ii, "N/A");
+    strcpy(info->lead_iii, "N/A");
+    strcpy(info->lead_avr, "N/A");
+    strcpy(info->lead_avl, "N/A");
+    strcpy(info->lead_avf, "N/A");
+    strcpy(info->lead_v1, "N/A");
+    strcpy(info->lead_v2, "N/A");
+    strcpy(info->lead_v3, "N/A");
+    strcpy(info->lead_v4, "N/A");
+    strcpy(info->lead_v5, "N/A");
+    strcpy(info->lead_v6, "N/A");
+    strcpy(info->origin, "N/A");
+    strcpy(info->scale, "N/A");
+    strcpy(info->increment, "N/A");
 
     FILE *fp = fopen(path, "r");
     if (!fp) {
@@ -461,9 +507,12 @@ static void parse_xml_file(const char *path, patient_info_t *info)
         return;
     }
 
-    char line[256];
+    char line[512];
     bool in_effective_time = false;
     bool in_annotation = false;
+    bool in_slist_pq = false;
+    char current_lead[32] = {0};
+
     while (fgets(line, sizeof(line), fp)) {
         // Remove leading/trailing whitespace
         char *pos = line;
@@ -483,6 +532,13 @@ static void parse_xml_file(const char *path, patient_info_t *info)
             in_annotation = true;
         } else if (strstr(pos, "</annotation>")) {
             in_annotation = false;
+        }
+
+        // Check for <value xsi:type="SLIST_PQ"> context
+        if (strstr(pos, "<value xsi:type=\"SLIST_PQ\">")) {
+            in_slist_pq = true;
+        } else if (strstr(pos, "</value>")) {
+            in_slist_pq = false;
         }
 
         // Parse specific tags
@@ -781,7 +837,7 @@ static void parse_xml_file(const char *path, patient_info_t *info)
                         *end_tag = '\0';
                         while (*start && isspace((unsigned char)*start)) start++;
                         char *value_end = end_tag - 1;
-                        while (value_end > start && isspace((unsigned char)*value_end)) *value_end-- = '\0';
+                        while (value_end > start && isspace((unsigned ևvalue_end)) *value_end-- = '\0';
                         snprintf(info->qrs_axis, sizeof(info->qrs_axis), "%s deg", start);
                     }
                 }
@@ -837,8 +893,8 @@ static void parse_xml_file(const char *path, patient_info_t *info)
         } else if (in_annotation && strstr(pos, "<value xsi:type=\"ST\">")) {
             char *start = strstr(pos, "<value xsi:type=\"ST\">");
             if (start) {
-                start += 20; // Skip <value xsi:type="ST">
-                while (*start && !isalnum((unsigned char)*start)) start++; // Skip non-alphanumeric characters
+                start += 20;
+                while (*start && !isalnum((unsigned char)*start)) start++;
                 char *end_tag = strstr(start, "</value>");
                 if (end_tag) {
                     *end_tag = '\0';
@@ -847,6 +903,122 @@ static void parse_xml_file(const char *path, patient_info_t *info)
                     while (value_end > start && isspace((unsigned char)*value_end)) *value_end-- = '\0';
                     strncpy(info->interpretation, start, sizeof(info->interpretation) - 1);
                     info->interpretation[sizeof(info->interpretation) - 1] = '\0';
+                }
+            }
+        } else if (strstr(pos, "<code code=\"MDC_ECG_LEAD_")) {
+            char *code = strstr(pos, "code=\"");
+            if (code) {
+                code += 6;
+                char *end_code = strchr(code, '"');
+                if (end_code) {
+                    *end_code = '\0';
+                    strncpy(current_lead, code, sizeof(current_lead) - 1);
+                    current_lead[sizeof(current_lead) - 1] = '\0';
+                }
+            }
+        } else if (in_slist_pq && strstr(pos, "<origin")) {
+            char *value = strstr(pos, "value=\"");
+            if (value) {
+                value += 7;
+                char *end_value = strchr(value, '"');
+                if (end_value) {
+                    char temp[16];
+                    *end_value = '\0';
+                    strncpy(temp, value, sizeof(temp) - 1);
+                    temp[sizeof(temp) - 1] = '\0';
+                    char *unit = strstr(pos, "unit=\"");
+                    if (unit) {
+                        unit += 6;
+                        char *end_unit = strchr(unit, '"');
+                        if (end_unit) {
+                            *end_unit = '\0';
+                            snprintf(info->origin, sizeof(info->origin), "%s %s", temp, unit);
+                        }
+                    }
+                }
+            }
+        } else if (in_slist_pq && strstr(pos, "<scale")) {
+            char *value = strstr(pos, "value=\"");
+            if (value) {
+                value += 7;
+                char *end_value = strchr(value, '"');
+                if (end_value) {
+                    char temp[16];
+                    *end_value = '\0';
+                    strncpy(temp, value, sizeof(temp) - 1);
+                    temp[sizeof(temp) - 1] = '\0';
+                    char *unit = strstr(pos, "unit=\"");
+                    if (unit) {
+                        unit += 6;
+                        char *end_unit = strchr(unit, '"');
+                        if (end_unit) {
+                            *end_unit = '\0';
+                            snprintf(info->scale, sizeof(info->scale), "%s %s", temp, unit);
+                        }
+                    }
+                }
+            }
+        } else if (strstr(pos, "<increment")) {
+            char *value = strstr(pos, "value=\"");
+            if (value) {
+                value += 7;
+                char *end_value = strchr(value, '"');
+                if (end_value) {
+                    char temp[16];
+                    *end_value = '\0';
+                    strncpy(temp, value, sizeof(temp) - 1);
+                    temp[sizeof(temp) - 1] = '\0';
+                    char *unit = strstr(pos, "unit=\"");
+                    if (unit) {
+                        unit += 6;
+                        char *end_unit = strchr(unit, '"');
+                        if (end_unit) {
+                            *end_unit = '\0';
+                            snprintf(info->increment, sizeof(info->increment), "%s %s", temp, unit);
+                        }
+                    }
+                }
+            }
+        } else if (in_slist_pq && strstr(pos, "<digits>")) {
+            char *start = strstr(pos, "<digits>");
+            if (start) {
+                start += 8;
+                char *end_tag = strstr(start, "</digits>");
+                if (end_tag) {
+                    *end_tag = '\0';
+                    while (*start && isspace((unsigned char)*start)) start++;
+                    char *value_end = end_tag - 1;
+                    while (value_end > start && isspace((unsigned char)*value_end)) *value_end-- = '\0';
+                    char *target = NULL;
+                    if (strcmp(current_lead, "MDC_ECG_LEAD_I") == 0) {
+                        target = info->lead_i;
+                    } else if (strcmp(current_lead, "MDC_ECG_LEAD_II") == 0) {
+                        target = info->lead_ii;
+                    } else if (strcmp(current_lead, "MDC_ECG_LEAD_III") == 0) {
+                        target = info->lead_iii;
+                    } else if (strcmp(current_lead, "MDC_ECG_LEAD_AVR") == 0) {
+                        target = info->lead_avr;
+                    } else if (strcmp(current_lead, "MDC_ECG_LEAD_AVL") == 0) {
+                        target = info->lead_avl;
+                    } else if (strcmp(current_lead, "MDC_ECG_LEAD_AVF") == 0) {
+                        target = info->lead_avf;
+                    } else if (strcmp(current_lead, "MDC_ECG_LEAD_V1") == 0) {
+                        target = info->lead_v1;
+                    } else if (strcmp(current_lead, "MDC_ECG_LEAD_V2") == 0) {
+                        target = info->lead_v2;
+                    } else if (strcmp(current_lead, "MDC_ECG_LEAD_V3") == 0) {
+                        target = info->lead_v3;
+                    } else if (strcmp(current_lead, "MDC_ECG_LEAD_V4") == 0) {
+                        target = info->lead_v4;
+                    } else if (strcmp(current_lead, "MDC_ECG_LEAD_V5") == 0) {
+                        target = info->lead_v5;
+                    } else if (strcmp(current_lead, "MDC_ECG_LEAD_V6") == 0) {
+                        target = info->lead_v6;
+                    }
+                    if (target) {
+                        strncpy(target, start, 4095);
+                        target[4095] = '\0';
+                    }
                 }
             }
         }
@@ -874,17 +1046,17 @@ static int console_read(int argc, char **argv)
     int max_index = -1;
 
     while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_type == DT_DIR && strncmp(entry->d_name, "ecg_archive", 11) == 0) {
-            if (strcmp(entry->d_name, "ecg_archive") == 0) {
+        if (entry->d_type == DT_DIR && strncmp(entry->value, "ecg_archive", 11) == 0) {
+            if (strcmp(entry->value, "ecg_archive") == 0) {
                 if (max_index < 0) {
-                    strcpy(latest_folder, entry->d_name);
+                    strcpy(latest_folder, entry->value);
                     max_index = 0;
                 }
             } else {
-                int index = atoi(entry->d_name + 11); // Skip "ecg_archive_"
+                int index = atoi(entry->value, +11); // Skip "ecg_archive_"
                 if (index > max_index) {
                     max_index = index;
-                    strcpy(latest_folder, entry->d_name);
+                    strcpy(latest_folder, entry->value);
                 }
             }
         }
@@ -907,8 +1079,8 @@ static int console_read(int argc, char **argv)
 
     char xml_file[256] = "";
     while ((entry = readdir(subdir)) != NULL) {
-        if (entry->d_type == DT_REG && strstr(entry->d_name, ".XML")) {
-            strcpy(xml_file, entry->d_name);
+        if (entry->d_type == DT_REG && strstr(entry->value, ".XML")) {
+            strcpy(xml_file, entry->value);
             break; // Take the first XML file
         }
     }
@@ -935,11 +1107,11 @@ static int console_read(int argc, char **argv)
     printf("Tanggal Lahir   : %s\n", info.birth_time);
     printf("Room ID         : %s\n", info.sickroomid);
     printf("Bed ID          : %s\n", info.bedid);
-    printf("Inhospital ID   : %s\n", info.inhospitalid);
-    printf("Operator        : %s\n", info.cop);
+    printf("Inhospital ID   : %s\n", info.inhospital_id);
+    printf("Operator       : %s\n", info.cop);
     printf("Waktu Awal      : %s\n", info.effective_time_low);
     printf("Waktu Akhir     : %s\n", info.effective_time_high);
-    printf("Case ID         : %s\n", info.caseid);
+    printf("Case ID         : %s\n", info.casesize);
     printf("Filter          : %s\n", info.filter);
     printf("Kode Unik       : %s\n", info.uniquecode);
     printf("=======================\n");
@@ -947,18 +1119,34 @@ static int console_read(int argc, char **argv)
     // Print EKG interpretation
     printf("\n=== Hasil Interpretasi EKG ===\n");
     printf("Heart Rate      : %s\n", info.hr);
-    printf("Interval PR     : %s\n", info.pr_interval);
-    printf("Durasi P        : %s\n", info.p_duration);
+    printf("Interval PR     : %s\n", info.pr_intervals);
+    printf("Durasi P      : %s\n", info.p_duration);
     printf("Durasi QRS      : %s\n", info.qrs_duration);
     printf("Durasi T        : %s\n", info.t_duration);
-    printf("Durasi QT       : %s\n", info.qt_interval);
-    printf("QT Koreksi      : %s\n", info.qtc_interval);
+    printf("Durasi QT       : %s\n", info.qt_intervals);
+    printf("QT Koreksi      : %s\n", info.qtc_intervals);
     printf("Sudut Axis P    : %s\n", info.p_axis);
     printf("Sudut Axis QRS  : %s\n", info.qrs_axis);
     printf("Sudut Axis T    : %s\n", info.t_axis);
     printf("Amplitudo R V5  : %s\n", info.r_v5);
     printf("Amplitudo S V1  : %s\n", info.s_v1);
     printf("Interpretasi    : %s\n", info.interpretation);
+    printf("=== Data Grafik EKG ===\n");
+    printf("Lead I          : %s\n", info.lead_i);
+    printf("Lead II         : %s\n", info.lead_ii);
+    printf("Lead III        : %s\n", info.lead_iii);
+    printf("Lead aVR        : %s\n", info.lead_avr);
+    printf("Lead aVL        : %s\n", info.lead_avl);
+    printf("Lead aVF        : %s\n", info.lead_avf);
+    printf("Lead V1         : %s\n", info.lead_v1);
+    printf("Lead V2         : %s\n", info.lead_v2);
+    printf("Lead V3         : %s\n", info.lead_v3);
+    printf("Lead V4         : %s\n", info.lead_v4);
+    printf("Lead V5         : %s\n", info.lead_v5);
+    printf("Lead V6         : %s\n", info.lead_v6);
+    printf("Origin          : %s\n", info.origin);
+    printf("Scale           : %s\n", info.scale);
+    printf("Increment       : %s\n", info.increment);
     printf("==============================\n");
 
     return 0;
