@@ -1,0 +1,25 @@
+{
+  "C_Cpp.intelliSenseEngine": "default",
+  "idf.espIdfPathWin": "c:\\Users\\RND-5\\esp\\v5.4.1\\esp-idf",
+  "idf.pythonInstallPath": "c:\\Users\\RND-5\\.espressif\\tools\\idf-python\\3.11.2\\python.exe",
+  "idf.openOcdConfigs": [
+    "board/esp32s3-builtin.cfg"
+  ],
+  "idf.portWin": "COM8",
+  "idf.toolsPathWin": "c:\\Users\\RND-5\\.espressif",
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32s3"
+  },
+  "idf.flashType": "UART",
+  "files.associations": {
+    "*.dbclient-js": "javascript",
+    "sd_pwr_ctrl_by_on_chip_ldo.h": "c",
+    "diskio_sdmmc.h": "c",
+    "vector": "cpp",
+    "string": "cpp",
+    "dirent.h": "c",
+    "sdkconfig.h": "c",
+    "ctype.h": "c",
+    "_locale.h": "c"
+  }
+}
