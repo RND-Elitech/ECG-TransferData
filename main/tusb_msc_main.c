@@ -9,7 +9,8 @@
  * It reads an XML file from the storage (SPI Flash or SD card), parses patient information,
  * and displays it on the serial console. The storage can be accessed by either the embedded
  * application or the USB host, but not both simultaneously.
- * Added functionality: Read ECG Lead I data, convert to uint16_t, store in binary array, and encode to Base64.
+ * Added functionality: Read ECG Lead data (I, II, III, aVR, aVL, aVF, V1-V6), convert to uint16_t,
+ * store in binary array, and encode to Base64.
  */
 
 #include <errno.h>
@@ -129,7 +130,7 @@ typedef struct {
     char pr_interval[16];     // PR Interval
     char p_duration[16];      // P Duration
     char qrs_duration[16];    // QRS Duration
-    char t_duration[16];      // T Duration (new)
+    char t_duration[16];      // T Duration
     char qt_interval[16];     // QT Interval
     char qtc_interval[16];    // QTc Interval
     char p_axis[16];          // P Axis
@@ -144,13 +145,12 @@ typedef struct {
 static const char *base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 static void base64_encode(const uint8_t *input, size_t input_len, char *output, size_t *output_len) {
     size_t i, j;
-    *output_len = ((input_len + 2) / 3) * 4; // Calculate output length
+    *output_len = ((input_len + 2) / 3) * 4;
     for (i = 0, j = 0; i < input_len; i += 3, j += 4) {
         uint32_t value = 0;
         value |= input[i] << 16;
         if (i + 1 < input_len) value |= input[i + 1] << 8;
         if (i + 2 < input_len) value |= input[i + 2];
-
         output[j] = base64_chars[(value >> 18) & 0x3F];
         output[j + 1] = base64_chars[(value >> 12) & 0x3F];
         output[j + 2] = (i + 1 < input_len) ? base64_chars[(value >> 6) & 0x3F] : '=';
@@ -169,8 +169,9 @@ static int console_exit(int argc, char **argv);
 static void parse_xml_file(const char *filename, patient_info_t *info);
 static int console_check(int argc, char **argv);
 static int console_read_file(int argc, char **argv);
-static int console_read_leadi(int argc, char **argv);
+static int console_read_lead(int argc, char **argv, const char *lead_code, const char *lead_name);
 
+/* Command structure */
 const esp_console_cmd_t cmds[] = {
     {
         .command = "check",
@@ -225,85 +226,77 @@ const esp_console_cmd_t cmds[] = {
         .help = "Read ECG Lead I from specified XML file and encode to Base64 (e.g., read_leadi ecg_archive data.XML)",
         .hint = "<folder_name> <file_name>",
         .func = &console_read_leadi,
+    },
+    {
+        .command = "read_leadii",
+        .help = "Read ECG Lead II from specified XML file and encode to Base64 (e.g., read_leadii ecg_archive data.XML)",
+        .hint = "<folder_name> <file_name>",
+        .func = &console_read_leadii,
+    },
+    {
+        .command = "read_leadiii",
+        .help = "Read ECG Lead III from specified XML file and encode to Base64 (e.g., read_leadiii ecg_archive data.XML)",
+        .hint = "<folder_name> <file_name>",
+        .func = &console_read_leadiii,
+    },
+    {
+        .command = "read_leadavr",
+        .help = "Read ECG Lead aVR from specified XML file and encode to Base64 (e.g., read_leadavr ecg_archive data.XML)",
+        .hint = "<folder_name> <file_name>",
+        .func = &console_read_leadavr,
+    },
+    {
+        .command = "read_leadavl",
+        .help = "Read ECG Lead aVL from specified XML file and encode to Base64 (e.g., read_leadavl ecg_archive data.XML)",
+        .hint = "<folder_name> <file_name>",
+        .func = &console_read_leadavl,
+    },
+    {
+        .command = "read_leadavf",
+        .help = "Read ECG Lead aVF from specified XML file and encode to Base64 (e.g., read_leadavf ecg_archive data.XML)",
+        .hint = "<folder_name> <file_name>",
+        .func = &console_read_leadavf,
+    },
+    {
+        .command = "read_leadv1",
+        .help = "Read ECG Lead V1 from specified XML file and encode to Base64 (e.g., read_leadv1 ecg_archive data.XML)",
+        .hint = "<folder_name> <file_name>",
+        .func = &console_read_leadv1,
+    },
+    {
+        .command = "read_leadv2",
+        .help = "Read ECG Lead V2 from specified XML file and encode to Base64 (e.g., read_leadv2 ecg_archive data.XML)",
+        .hint = "<folder_name> <file_name>",
+        .func = &console_read_leadv2,
+    },
+    {
+        .command = "read_leadv3",
+        .help = "Read ECG Lead V3 from specified XML file and encode to Base64 (e.g., read_leadv3 ecg_archive data.XML)",
+        .hint = "<folder_name> <file_name>",
+        .func = &console_read_leadv3,
+    },
+    {
+        .command = "read_leadv4",
+        .help = "Read ECG Lead V4 from specified XML file and encode to Base64 (e.g., read_leadv4 ecg_archive data.XML)",
+        .hint = "<folder_name> <file_name>",
+        .func = &console_read_leadv4,
+    },
+    {
+        .command = "read_leadv5",
+        .help = "Read ECG Lead V5 from specified XML file and encode to Base64 (e.g., read_leadv5 ecg_archive data.XML)",
+        .hint = "<folder_name> <file_name>",
+        .func = &console_read_leadv5,
+    },
+    {
+        .command = "read_leadv6",
+        .help = "Read ECG Lead V6 from specified XML file and encode to Base64 (e.g., read_leadv6 ecg_archive data.XML)",
+        .hint = "<folder_name> <file_name>",
+        .func = &console_read_leadv6,
     }
 };
 
-static void _mount(void)
-{
-    ESP_LOGI(TAG, "Mount storage...");
-    ESP_ERROR_CHECK(tinyusb_msc_storage_mount(BASE_PATH));
-
-    ESP_LOGI(TAG, "\nls command output:");
-    struct dirent *d;
-    DIR *dh = opendir(BASE_PATH);
-    if (!dh) {
-        if (errno == ENOENT) {
-            ESP_LOGE(TAG, "Directory doesn't exist %s", BASE_PATH);
-        } else {
-            ESP_LOGE(TAG, "Unable to read directory %s", BASE_PATH);
-        }
-        return;
-    }
-    while ((d = readdir(dh)) != NULL) {
-        printf("%s\n", d->d_name);
-    }
-    closedir(dh);
-}
-
-static int console_check(int argc, char **argv)
-{
-    if (tinyusb_msc_storage_in_use_by_usb_host()) {
-        ESP_LOGE(TAG, "Storage exposed over USB. Application can't access storage.");
-        return -1;
-    }
-
-    ESP_LOGI(TAG, "Listing folders in %s", BASE_PATH);
-    DIR *dir = opendir(BASE_PATH);
-    if (!dir) {
-        ESP_LOGE(TAG, "Failed to open directory %s", BASE_PATH);
-        return -1;
-    }
-
-    bool found = false;
-    struct dirent *entry;
-    printf("Folders found:\n");
-    while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_type == DT_DIR && strncmp(entry->d_name, "ecg_archive", 11) == 0) {
-            printf("- %s\n", entry->d_name);
-            found = true;
-
-            // List XML files in the folder
-            char folder_path[512];
-            snprintf(folder_path, sizeof(folder_path), "%s/%s", BASE_PATH, entry->d_name);
-            DIR *subdir = opendir(folder_path);
-            if (subdir) {
-                printf("  XML files:\n");
-                struct dirent *subentry;
-                bool file_found = false;
-                while ((subentry = readdir(subdir)) != NULL) {
-                    if (subentry->d_type == DT_REG && strstr(subentry->d_name, ".XML")) {
-                        printf("    - %s\n", subentry->d_name);
-                        file_found = true;
-                    }
-                }
-                if (!file_found) {
-                    printf("    (No XML files found)\n");
-                }
-                closedir(subdir);
-            } else {
-                ESP_LOGE(TAG, "Failed to open directory %s", folder_path);
-            }
-        }
-    }
-    closedir(dir);
-
-    if (!found) {
-        ESP_LOGI(TAG, "No ecg_archive folders found in %s", BASE_PATH);
-    }
-    return 0;
-}
-
-static int console_read_file(int argc, char **argv)
+/* Generic function to read ECG lead data */
+static int console_read_lead(int argc, char **argv, const char *lead_code, const char *lead_name)
 {
     if (tinyusb_msc_storage_in_use_by_usb_host()) {
         ESP_LOGE(TAG, "Storage exposed over USB. Application can't read from storage.");
@@ -311,95 +304,7 @@ static int console_read_file(int argc, char **argv)
     }
 
     if (argc != 3) {
-        ESP_LOGE(TAG, "Usage: read_file <folder_name> <file_name>");
-        return -1;
-    }
-
-    const char *folder_name = argv[1];
-    const char *file_name = argv[2];
-
-    // Validate folder name
-    if (strncmp(folder_name, "ecg_archive", 11) != 0) {
-        ESP_LOGE(TAG, "Folder must start with 'ecg_archive'");
-        return -1;
-    }
-
-    // Check if folder exists
-    char folder_path[512];
-    snprintf(folder_path, sizeof(folder_path), "%s/%s", BASE_PATH, folder_name);
-    DIR *dir = opendir(folder_path);
-    if (!dir) {
-        ESP_LOGE(TAG, "Folder %s does not exist", folder_path);
-        return -1;
-    }
-    closedir(dir);
-
-    // Check if file exists and has .XML extension
-    char file_path[768];
-    snprintf(file_path, sizeof(file_path), "%s/%s", folder_path, file_name);
-    if (!strstr(file_name, ".XML")) {
-        ESP_LOGE(TAG, "File must have .XML extension");
-        return -1;
-    }
-
-    FILE *fp = fopen(file_path, "r");
-    if (!fp) {
-        ESP_LOGE(TAG, "Failed to open file %s", file_path);
-        return -1;
-    }
-    fclose(fp);
-
-    // Parse the XML file
-    ESP_LOGI(TAG, "Reading XML file: %s/%s", folder_name, file_name);
-    patient_info_t info;
-    parse_xml_file(file_path, &info);
-
-    // Print patient information
-    printf("\n=== Informasi Pasien ===\n");
-    printf("Nama Pasien     : %s\n", info.name);
-    printf("Jenis Kelamin   : %s\n", info.sex);
-    printf("Umur            : %s tahun\n", info.age);
-    printf("Tanggal Lahir   : %s\n", info.birth_time);
-    printf("Room ID         : %s\n", info.sickroomid);
-    printf("Bed ID          : %s\n", info.bedid);
-    printf("Inhospital ID   : %s\n", info.inhospitalid);
-    printf("Operator        : %s\n", info.cop);
-    printf("Waktu Awal      : %s\n", info.effective_time_low);
-    printf("Waktu Akhir     : %s\n", info.effective_time_high);
-    printf("Case ID         : %s\n", info.caseid);
-    printf("Filter          : %s\n", info.filter);
-    printf("Kode Unik       : %s\n", info.uniquecode);
-    printf("=======================\n");
-
-    // Print EKG interpretation
-    printf("\n=== Hasil Interpretasi EKG ===\n");
-    printf("Heart Rate      : %s\n", info.hr);
-    printf("Interval PR     : %s\n", info.pr_interval);
-    printf("Durasi P        : %s\n", info.p_duration);
-    printf("Durasi QRS      : %s\n", info.qrs_duration);
-    printf("Durasi T        : %s\n", info.t_duration);
-    printf("Durasi QT       : %s\n", info.qt_interval);
-    printf("QT Koreksi      : %s\n", info.qtc_interval);
-    printf("Sudut Axis P    : %s\n", info.p_axis);
-    printf("Sudut Axis QRS  : %s\n", info.qrs_axis);
-    printf("Sudut Axis T    : %s\n", info.t_axis);
-    printf("Amplitudo R V5  : %s\n", info.r_v5);
-    printf("Amplitudo S V1  : %s\n", info.s_v1);
-    printf("Interpretasi    : %s\n", info.interpretation);
-    printf("==============================\n");
-
-    return 0;
-}
-
-static int console_read_leadi(int argc, char **argv)
-{
-    if (tinyusb_msc_storage_in_use_by_usb_host()) {
-        ESP_LOGE(TAG, "Storage exposed over USB. Application can't read from storage.");
-        return -1;
-    }
-
-    if (argc != 3) {
-        ESP_LOGE(TAG, "Usage: read_leadi <folder_name> <file_name>");
+        ESP_LOGE(TAG, "Usage: %s <folder_name> <file_name>", argv[0]);
         return -1;
     }
 
@@ -436,11 +341,11 @@ static int console_read_leadi(int argc, char **argv)
         return -1;
     }
 
-    // Parse XML to find Lead I data
-    char line[512]; // Increased buffer size
+    // Parse XML to find lead data
+    char line[512];
     char *digits_str = NULL;
     bool in_sequence = false;
-    bool is_lead_i = false;
+    bool is_target_lead = false;
     bool in_value = false;
 
     while (fgets(line, sizeof(line), fp)) {
@@ -450,39 +355,31 @@ static int console_read_leadi(int argc, char **argv)
         char *end = pos + strlen(pos);
         while (end > pos && isspace((unsigned char)*(end - 1))) *(--end) = '\0';
 
-        // Debugging: Log each line
-        ESP_LOGD(TAG, "Parsing line: %s", pos);
-
         // Check for sequence start/end
         if (strstr(pos, "<sequence>")) {
             in_sequence = true;
-            is_lead_i = false;
+            is_target_lead = false;
             in_value = false;
-            ESP_LOGD(TAG, "Entering sequence");
         } else if (strstr(pos, "</sequence>")) {
             in_sequence = false;
             in_value = false;
-            if (is_lead_i && digits_str) {
-                ESP_LOGD(TAG, "Found Lead I digits, exiting sequence loop");
+            if (is_target_lead && digits_str) {
                 break;
             }
-            ESP_LOGD(TAG, "Exiting sequence");
         }
 
-        // Check for Lead I code
-        if (in_sequence && strstr(pos, "code=\"MDC_ECG_LEAD_I\"")) {
-            is_lead_i = true;
-            ESP_LOGD(TAG, "Detected MDC_ECG_LEAD_I");
+        // Check for target lead code
+        if (in_sequence && strstr(pos, lead_code)) {
+            is_target_lead = true;
         }
 
         // Check for value start
-        if (in_sequence && is_lead_i && strstr(pos, "<value")) {
+        if (in_sequence && is_target_lead && strstr(pos, "<value")) {
             in_value = true;
-            ESP_LOGD(TAG, "Entering value tag");
         }
 
         // Capture digits within value
-        if (in_sequence && is_lead_i && in_value && strstr(pos, "<digits>")) {
+        if (in_sequence && is_target_lead && in_value && strstr(pos, "<digits>")) {
             char *start = strstr(pos, "<digits>");
             if (start) {
                 start += 8;
@@ -490,10 +387,9 @@ static int console_read_leadi(int argc, char **argv)
                 if (end_tag) {
                     *end_tag = '\0';
                     digits_str = strdup(start);
-                    ESP_LOGD(TAG, "Captured digits: %s", digits_str);
                 } else {
                     // Handle multi-line digits
-                    char *buffer = malloc(65536);
+                    char *buffer = malloc(1024);
                     if (!buffer) {
                         ESP_LOGE(TAG, "Memory allocation failed for digits buffer");
                         fclose(fp);
@@ -509,12 +405,11 @@ static int console_read_leadi(int argc, char **argv)
                         if (strstr(pos, "</digits>")) {
                             end_tag = strstr(pos, "</digits>");
                             *end_tag = '\0';
-                            strncat(buffer, pos, 65536  - buffer_len - 1);
+                            strncat(buffer, pos, 1024 - buffer_len - 1);
                             digits_str = strdup(buffer);
-                            ESP_LOGD(TAG, "Captured multi-line digits: %s", digits_str);
                             break;
                         } else {
-                            strncat(buffer, pos, 65536  - buffer_len - 1);
+                            strncat(buffer, pos, 1024 - buffer_len - 1);
                             buffer_len = strlen(buffer);
                         }
                     }
@@ -526,7 +421,7 @@ static int console_read_leadi(int argc, char **argv)
     fclose(fp);
 
     if (!digits_str) {
-        ESP_LOGE(TAG, "No Lead I data found in %s", file_path);
+        ESP_LOGE(TAG, "No %s data found in %s", lead_name, file_path);
         return -1;
     }
 
@@ -573,13 +468,62 @@ static int console_read_leadi(int argc, char **argv)
     free(binary_data);
 
     // Print Base64 output
-    printf("\n=== ECG Lead I Base64 Encoded ===\n");
+    printf("\n=== ECG %s Base64 Encoded ===\n", lead_name);
     printf("File: %s/%s\n", folder_name, file_name);
-    printf("Lead I Data (Base64): %s\n", base64_output);
+    printf("%s Data (Base64): %s\n", lead_name, base64_output);
     printf("================================\n");
 
     free(base64_output);
     return 0;
+}
+
+/* Specific lead read functions */
+static int console_read_leadi(int argc, char **argv) {
+    return console_read_lead(argc, argv, "code=\"MDC_ECG_LEAD_I\"", "Lead I");
+}
+
+static int console_read_leadii(int argc, char **argv) {
+    return console_read_lead(argc, argv, "code=\"MDC_ECG_LEAD_II\"", "Lead II");
+}
+
+static int console_read_leadiii(int argc, char **argv) {
+    return console_read_lead(argc, argv, "code=\"MDC_ECG_LEAD_III\"", "Lead III");
+}
+
+static int console_read_leadavr(int argc, char **argv) {
+    return console_read_lead(argc, argv, "code=\"MDC_ECG_LEAD_AVR\"", "Lead aVR");
+}
+
+static int console_read_leadavl(int argc, char **argv) {
+    return console_read_lead(argc, argv, "code=\"MDC_ECG_LEAD_AVL\"", "Lead aVL");
+}
+
+static int console_read_leadavf(int argc, char **argv) {
+    return console_read_lead(argc, argv, "code=\"MDC_ECG_LEAD_AVF\"", "Lead aVF");
+}
+
+static int console_read_leadv1(int argc, char **argv) {
+    return console_read_lead(argc, argv, "code=\"MDC_ECG_LEAD_V1\"", "Lead V1");
+}
+
+static int console_read_leadv2(int argc, char **argv) {
+    return console_read_lead(argc, argv, "code=\"MDC_ECG_LEAD_V2\"", "Lead V2");
+}
+
+static int console_read_leadv3(int argc, char **argv) {
+    return console_read_lead(argc, argv, "code=\"MDC_ECG_LEAD_V3\"", "Lead V3");
+}
+
+static int console_read_leadv4(int argc, char **argv) {
+    return console_read_lead(argc, argv, "code=\"MDC_ECG_LEAD_V4\"", "Lead V4");
+}
+
+static int console_read_leadv5(int argc, char **argv) {
+    return console_read_lead(argc, argv, "code=\"MDC_ECG_LEAD_V5\"", "Lead V5");
+}
+
+static int console_read_leadv6(int argc, char **argv) {
+    return console_read_lead(argc, argv, "code=\"MDC_ECG_LEAD_V6\"", "Lead V6");
 }
 
 static int console_unmount(int argc, char **argv)
@@ -1073,6 +1017,147 @@ static void parse_xml_file(const char *path, patient_info_t *info)
     fclose(fp);
 }
 
+static int console_check(int argc, char **argv)
+{
+    if (tinyusb_msc_storage_in_use_by_usb_host()) {
+        ESP_LOGE(TAG, "Storage exposed over USB. Application can't access storage.");
+        return -1;
+    }
+
+    ESP_LOGI(TAG, "Listing folders in %s", BASE_PATH);
+    DIR *dir = opendir(BASE_PATH);
+    if (!dir) {
+        ESP_LOGE(TAG, "Failed to open directory %s", BASE_PATH);
+        return -1;
+    }
+
+    bool found = false;
+    struct dirent *entry;
+    printf("Folders found:\n");
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type == DT_DIR && strncmp(entry->d_name, "ecg_archive", 11) == 0) {
+            printf("- %s\n", entry->d_name);
+            found = true;
+
+            // List XML files in the folder
+            char folder_path[512];
+            snprintf(folder_path, sizeof(folder_path), "%s/%s", BASE_PATH, entry->d_name);
+            DIR *subdir = opendir(folder_path);
+            if (subdir) {
+                printf("  XML files:\n");
+                struct dirent *subentry;
+                bool file_found = false;
+                while ((subentry = readdir(subdir)) != NULL) {
+                    if (subentry->d_type == DT_REG && strstr(subentry->d_name, ".XML")) {
+                        printf("    - %s\n", subentry->d_name);
+                        file_found = true;
+                    }
+                }
+                if (!file_found) {
+                    printf("    (No XML files found)\n");
+                }
+                closedir(subdir);
+            } else {
+                ESP_LOGE(TAG, "Failed to open directory %s", folder_path);
+            }
+        }
+    }
+    closedir(dir);
+
+    if (!found) {
+        ESP_LOGI(TAG, "No ecg_archive folders found in %s", BASE_PATH);
+    }
+    return 0;
+}
+
+static int console_read_file(int argc, char **argv)
+{
+    if (tinyusb_msc_storage_in_use_by_usb_host()) {
+        ESP_LOGE(TAG, "Storage exposed over USB. Application can't read from storage.");
+        return -1;
+    }
+
+    if (argc != 3) {
+        ESP_LOGE(TAG, "Usage: read_file <folder_name> <file_name>");
+        return -1;
+    }
+
+    const char *folder_name = argv[1];
+    const char *file_name = argv[2];
+
+    // Validate folder name
+    if (strncmp(folder_name, "ecg_archive", 11) != 0) {
+        ESP_LOGE(TAG, "Folder must start with 'ecg_archive'");
+        return -1;
+    }
+
+    // Check if folder exists
+    char folder_path[512];
+    snprintf(folder_path, sizeof(folder_path), "%s/%s", BASE_PATH, folder_name);
+    DIR *dir = opendir(folder_path);
+    if (!dir) {
+        ESP_LOGE(TAG, "Folder %s does not exist", folder_path);
+        return -1;
+    }
+    closedir(dir);
+
+    // Check if file exists and has .XML extension
+    char file_path[768];
+    snprintf(file_path, sizeof(file_path), "%s/%s", folder_path, file_name);
+    if (!strstr(file_name, ".XML")) {
+        ESP_LOGE(TAG, "File must have .XML extension");
+        return -1;
+    }
+
+    FILE *fp = fopen(file_path, "r");
+    if (!fp) {
+        ESP_LOGE(TAG, "Failed to open file %s", file_path);
+        return -1;
+    }
+    fclose(fp);
+
+    // Parse the XML file
+    ESP_LOGI(TAG, "Reading XML file: %s/%s", folder_name, file_name);
+    patient_info_t info;
+    parse_xml_file(file_path, &info);
+
+    // Print patient information
+    printf("\n=== Informasi Pasien ===\n");
+    printf("Nama Pasien     : %s\n", info.name);
+    printf("Jenis Kelamin   : %s\n", info.sex);
+    printf("Umur            : %s tahun\n", info.age);
+    printf("Tanggal Lahir   : %s\n", info.birth_time);
+    printf("Room ID         : %s\n", info.sickroomid);
+    printf("Bed ID          : %s\n", info.bedid);
+    printf("Inhospital ID   : %s\n", info.inhospitalid);
+    printf("Operator        : %s\n", info.cop);
+    printf("Waktu Awal      : %s\n", info.effective_time_low);
+    printf("Waktu Akhir     : %s\n", info.effective_time_high);
+    printf("Case ID         : %s\n", info.caseid);
+    printf("Filter          : %s\n", info.filter);
+    printf("Kode Unik       : %s\n", info.uniquecode);
+    printf("=======================\n");
+
+    // Print EKG interpretation
+    printf("\n=== Hasil Interpretasi EKG ===\n");
+    printf("Heart Rate      : %s\n", info.hr);
+    printf("Interval PR     : %s\n", info.pr_interval);
+    printf("Durasi P        : %s\n", info.p_duration);
+    printf("Durasi QRS      : %s\n", info.qrs_duration);
+    printf("Durasi T        : %s\n", info.t_duration);
+    printf("Durasi QT       : %s\n", info.qt_interval);
+    printf("QT Koreksi      : %s\n", info.qtc_interval);
+    printf("Sudut Axis P    : %s\n", info.p_axis);
+    printf("Sudut Axis QRS  : %s\n", info.qrs_axis);
+    printf("Sudut Axis T    : %s\n", info.t_axis);
+    printf("Amplitudo R V5  : %s\n", info.r_v5);
+    printf("Amplitudo S V1  : %s\n", info.s_v1);
+    printf("Interpretasi    : %s\n", info.interpretation);
+    printf("==============================\n");
+
+    return 0;
+}
+
 static int console_read(int argc, char **argv)
 {
     if (tinyusb_msc_storage_in_use_by_usb_host()) {
@@ -1182,9 +1267,26 @@ static int console_read(int argc, char **argv)
     return 0;
 }
 
-static void storage_mount_changed_cb(tinyusb_msc_event_t *event)
+static void _mount(void)
 {
-    ESP_LOGI(TAG, "Storage mounted to application: %s", event->mount_changed_data.is_mounted ? "Yes" : "No");
+    ESP_LOGI(TAG, "Mount storage...");
+    ESP_ERROR_CHECK(tinyusb_msc_storage_mount(BASE_PATH));
+
+    ESP_LOGI(TAG, "\nls command output:");
+    struct dirent *d;
+    DIR *dh = opendir(BASE_PATH);
+    if (!dh) {
+        if (errno == ENOENT) {
+            ESP_LOGE(TAG, "Directory doesn't exist %s", BASE_PATH);
+        } else {
+            ESP_LOGE(TAG, "Unable to read directory %s", BASE_PATH);
+        }
+        return;
+    }
+    while ((d = readdir(dh)) != NULL) {
+        printf("%s\n", d->d_name);
+    }
+    closedir(dh);
 }
 
 #ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
@@ -1342,4 +1444,8 @@ void app_main(void)
 
     ESP_ERROR_CHECK(esp_console_start_repl(repl));
 }
-//VERSI 2
+
+static void storage_mount_changed_cb(tinyusb_msc_event_t *event)
+{
+    ESP_LOGI(TAG, "Storage mounted to application: %s", event->mount_changed_data.is_mounted ? "Yes" : "No");
+}
