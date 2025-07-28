@@ -1,13 +1,13 @@
 # Target labels
  bootloader
 # Source files and their labels
-D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/CMakeFiles/bootloader
-D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/CMakeFiles/bootloader.rule
-D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/CMakeFiles/bootloader-complete.rule
-D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
-D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
-D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
-D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
-D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
-D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
-D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/CMakeFiles/bootloader
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/CMakeFiles/bootloader.rule
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/CMakeFiles/bootloader-complete.rule
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule

@@ -1,4 +1,4 @@
-/* * Data converted from D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/esp-idf/mbedtls/x509_crt_bundle
+/* * Data converted from D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/mbedtls/x509_crt_bundle
  */
 .data
 #if !defined (__APPLE__) && !defined (__linux__)

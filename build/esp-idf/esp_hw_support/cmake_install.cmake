@@ -39,11 +39,11 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/esp-idf/esp_hw_support/port/esp32s3/cmake_install.cmake")
+  include("D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esp_hw_support/port/esp32s3/cmake_install.cmake")
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/esp-idf/esp_hw_support/lowpower/cmake_install.cmake")
+  include("D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esp_hw_support/lowpower/cmake_install.cmake")
 endif()
 

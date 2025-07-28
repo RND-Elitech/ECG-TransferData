@@ -39,7 +39,7 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/esp-idf/cmake_install.cmake")
+  include("D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/esp-idf/cmake_install.cmake")
 endif()
 
 if(CMAKE_INSTALL_COMPONENT)
@@ -57,6 +57,6 @@ endif()
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-  file(WRITE "D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/${CMAKE_INSTALL_MANIFEST}"
+  file(WRITE "D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()

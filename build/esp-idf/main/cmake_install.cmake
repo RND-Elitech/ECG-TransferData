@@ -1,4 +1,4 @@
-# Install script for directory: D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/main
+# Install script for directory: D:/Dokumen Rivaldi/GIT/ECG TransferData/main
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)

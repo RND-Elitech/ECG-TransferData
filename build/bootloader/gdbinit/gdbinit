@@ -1,2 +1,2 @@
-source D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/gdbinit/symbols
-source D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader/gdbinit/connect
+source D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/gdbinit/symbols
+source D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/gdbinit/connect

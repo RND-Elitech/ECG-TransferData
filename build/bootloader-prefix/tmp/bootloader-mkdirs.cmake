@@ -10,18 +10,18 @@ if(NOT EXISTS "C:/Users/RND-5/esp/v5.4.1/esp-idf/components/bootloader/subprojec
   file(MAKE_DIRECTORY "C:/Users/RND-5/esp/v5.4.1/esp-idf/components/bootloader/subproject")
 endif()
 file(MAKE_DIRECTORY
-  "D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader"
-  "D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix"
-  "D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/tmp"
-  "D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp"
-  "D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src"
-  "D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp"
+  "D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader"
+  "D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix"
+  "D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/tmp"
+  "D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp"
+  "D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src"
+  "D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp"
 )
 
 set(configSubDirs )
 foreach(subDir IN LISTS configSubDirs)
-    file(MAKE_DIRECTORY "D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp/${subDir}")
+    file(MAKE_DIRECTORY "D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/${subDir}")
 endforeach()
 if(cfgdir)
-  file(MAKE_DIRECTORY "D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/build/bootloader-prefix/src/bootloader-stamp${cfgdir}") # cfgdir has leading slash
+  file(MAKE_DIRECTORY "D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp${cfgdir}") # cfgdir has leading slash
 endif()
