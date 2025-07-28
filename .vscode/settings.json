@@ -20,6 +20,14 @@
     "dirent.h": "c",
     "sdkconfig.h": "c",
     "ctype.h": "c",
-    "_locale.h": "c"
+    "_locale.h": "c",
+    "tusb_msc_storage.h": "c",
+    "stdlib.h": "c",
+    "string.h": "c",
+    "esp_console.h": "c",
+    "esp_check.h": "c",
+    "esp_partition.h": "c",
+    "gpio.h": "c",
+    "tinyusb.h": "c"
   }
 }

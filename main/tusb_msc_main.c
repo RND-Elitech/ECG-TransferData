@@ -9,6 +9,7 @@
  * It reads an XML file from the storage (SPI Flash or SD card), parses patient information,
  * and displays it on the serial console. The storage can be accessed by either the embedded
  * application or the USB host, but not both simultaneously.
+ * Added functionality: Read ECG Lead I data, convert to uint16_t, store in binary array, and encode to Base64.
  */
 
 #include <errno.h>
@@ -139,6 +140,25 @@ typedef struct {
     char interpretation[256]; // ECG Interpretation Statement
 } patient_info_t;
 
+/* Base64 encoding function */
+static const char *base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static void base64_encode(const uint8_t *input, size_t input_len, char *output, size_t *output_len) {
+    size_t i, j;
+    *output_len = ((input_len + 2) / 3) * 4; // Calculate output length
+    for (i = 0, j = 0; i < input_len; i += 3, j += 4) {
+        uint32_t value = 0;
+        value |= input[i] << 16;
+        if (i + 1 < input_len) value |= input[i + 1] << 8;
+        if (i + 2 < input_len) value |= input[i + 2];
+
+        output[j] = base64_chars[(value >> 18) & 0x3F];
+        output[j + 1] = base64_chars[(value >> 12) & 0x3F];
+        output[j + 2] = (i + 1 < input_len) ? base64_chars[(value >> 6) & 0x3F] : '=';
+        output[j + 3] = (i + 2 < input_len) ? base64_chars[value & 0x3F] : '=';
+    }
+    output[j] = '\0';
+}
+
 /* Function prototypes */
 static int console_unmount(int argc, char **argv);
 static int console_read(int argc, char **argv);
@@ -149,6 +169,7 @@ static int console_exit(int argc, char **argv);
 static void parse_xml_file(const char *filename, patient_info_t *info);
 static int console_check(int argc, char **argv);
 static int console_read_file(int argc, char **argv);
+static int console_read_leadi(int argc, char **argv);
 
 const esp_console_cmd_t cmds[] = {
     {
@@ -198,6 +219,12 @@ const esp_console_cmd_t cmds[] = {
         .help = "Exit from application",
         .hint = NULL,
         .func = &console_exit,
+    },
+    {
+        .command = "read_leadi",
+        .help = "Read ECG Lead I from specified XML file and encode to Base64 (e.g., read_leadi ecg_archive data.XML)",
+        .hint = "<folder_name> <file_name>",
+        .func = &console_read_leadi,
     }
 };
 
@@ -246,7 +273,7 @@ static int console_check(int argc, char **argv)
             found = true;
 
             // List XML files in the folder
-            char folder_path[512]; // Increased buffer size to avoid truncation
+            char folder_path[512];
             snprintf(folder_path, sizeof(folder_path), "%s/%s", BASE_PATH, entry->d_name);
             DIR *subdir = opendir(folder_path);
             if (subdir) {
@@ -361,6 +388,197 @@ static int console_read_file(int argc, char **argv)
     printf("Interpretasi    : %s\n", info.interpretation);
     printf("==============================\n");
 
+    return 0;
+}
+
+static int console_read_leadi(int argc, char **argv)
+{
+    if (tinyusb_msc_storage_in_use_by_usb_host()) {
+        ESP_LOGE(TAG, "Storage exposed over USB. Application can't read from storage.");
+        return -1;
+    }
+
+    if (argc != 3) {
+        ESP_LOGE(TAG, "Usage: read_leadi <folder_name> <file_name>");
+        return -1;
+    }
+
+    const char *folder_name = argv[1];
+    const char *file_name = argv[2];
+
+    // Validate folder name
+    if (strncmp(folder_name, "ecg_archive", 11) != 0) {
+        ESP_LOGE(TAG, "Folder must start with 'ecg_archive'");
+        return -1;
+    }
+
+    // Check if folder exists
+    char folder_path[512];
+    snprintf(folder_path, sizeof(folder_path), "%s/%s", BASE_PATH, folder_name);
+    DIR *dir = opendir(folder_path);
+    if (!dir) {
+        ESP_LOGE(TAG, "Folder %s does not exist", folder_path);
+        return -1;
+    }
+    closedir(dir);
+
+    // Check if file exists and has .XML extension
+    char file_path[768];
+    snprintf(file_path, sizeof(file_path), "%s/%s", folder_path, file_name);
+    if (!strstr(file_name, ".XML")) {
+        ESP_LOGE(TAG, "File must have .XML extension");
+        return -1;
+    }
+
+    FILE *fp = fopen(file_path, "r");
+    if (!fp) {
+        ESP_LOGE(TAG, "Failed to open file %s", file_path);
+        return -1;
+    }
+
+    // Parse XML to find Lead I data
+    char line[512]; // Increased buffer size
+    char *digits_str = NULL;
+    bool in_sequence = false;
+    bool is_lead_i = false;
+    bool in_value = false;
+
+    while (fgets(line, sizeof(line), fp)) {
+        // Remove leading/trailing whitespace
+        char *pos = line;
+        while (*pos && isspace((unsigned char)*pos)) pos++;
+        char *end = pos + strlen(pos);
+        while (end > pos && isspace((unsigned char)*(end - 1))) *(--end) = '\0';
+
+        // Debugging: Log each line
+        ESP_LOGD(TAG, "Parsing line: %s", pos);
+
+        // Check for sequence start/end
+        if (strstr(pos, "<sequence>")) {
+            in_sequence = true;
+            is_lead_i = false;
+            in_value = false;
+            ESP_LOGD(TAG, "Entering sequence");
+        } else if (strstr(pos, "</sequence>")) {
+            in_sequence = false;
+            in_value = false;
+            if (is_lead_i && digits_str) {
+                ESP_LOGD(TAG, "Found Lead I digits, exiting sequence loop");
+                break;
+            }
+            ESP_LOGD(TAG, "Exiting sequence");
+        }
+
+        // Check for Lead I code
+        if (in_sequence && strstr(pos, "code=\"MDC_ECG_LEAD_I\"")) {
+            is_lead_i = true;
+            ESP_LOGD(TAG, "Detected MDC_ECG_LEAD_I");
+        }
+
+        // Check for value start
+        if (in_sequence && is_lead_i && strstr(pos, "<value")) {
+            in_value = true;
+            ESP_LOGD(TAG, "Entering value tag");
+        }
+
+        // Capture digits within value
+        if (in_sequence && is_lead_i && in_value && strstr(pos, "<digits>")) {
+            char *start = strstr(pos, "<digits>");
+            if (start) {
+                start += 8;
+                char *end_tag = strstr(start, "</digits>");
+                if (end_tag) {
+                    *end_tag = '\0';
+                    digits_str = strdup(start);
+                    ESP_LOGD(TAG, "Captured digits: %s", digits_str);
+                } else {
+                    // Handle multi-line digits
+                    char *buffer = malloc(65536);
+                    if (!buffer) {
+                        ESP_LOGE(TAG, "Memory allocation failed for digits buffer");
+                        fclose(fp);
+                        return -1;
+                    }
+                    strcpy(buffer, start);
+                    size_t buffer_len = strlen(start);
+                    while (fgets(line, sizeof(line), fp)) {
+                        pos = line;
+                        while (*pos && isspace((unsigned char)*pos)) pos++;
+                        end = pos + strlen(pos);
+                        while (end > pos && isspace((unsigned char)*(end - 1))) *(--end) = '\0';
+                        if (strstr(pos, "</digits>")) {
+                            end_tag = strstr(pos, "</digits>");
+                            *end_tag = '\0';
+                            strncat(buffer, pos, 65536  - buffer_len - 1);
+                            digits_str = strdup(buffer);
+                            ESP_LOGD(TAG, "Captured multi-line digits: %s", digits_str);
+                            break;
+                        } else {
+                            strncat(buffer, pos, 65536  - buffer_len - 1);
+                            buffer_len = strlen(buffer);
+                        }
+                    }
+                    free(buffer);
+                }
+            }
+        }
+    }
+    fclose(fp);
+
+    if (!digits_str) {
+        ESP_LOGE(TAG, "No Lead I data found in %s", file_path);
+        return -1;
+    }
+
+    // Parse digits string into uint16_t array
+    uint16_t *data = NULL;
+    size_t data_count = 0;
+    char *token = strtok(digits_str, " ");
+    while (token) {
+        data = realloc(data, (data_count + 1) * sizeof(uint16_t));
+        if (!data) {
+            ESP_LOGE(TAG, "Memory allocation failed");
+            free(digits_str);
+            return -1;
+        }
+        int value = atoi(token);
+        data[data_count] = (uint16_t)(value + 32768); // Offset for negative values
+        data_count++;
+        token = strtok(NULL, " ");
+    }
+    free(digits_str);
+
+    // Convert to binary array (2 bytes per value, little-endian)
+    uint8_t *binary_data = malloc(data_count * 2);
+    if (!binary_data) {
+        ESP_LOGE(TAG, "Memory allocation failed for binary data");
+        free(data);
+        return -1;
+    }
+    for (size_t i = 0; i < data_count; i++) {
+        binary_data[i * 2] = data[i] & 0xFF;        // Low byte
+        binary_data[i * 2 + 1] = (data[i] >> 8) & 0xFF; // High byte
+    }
+    free(data);
+
+    // Encode to Base64
+    size_t output_len;
+    char *base64_output = malloc(((data_count * 2 + 2) / 3) * 4 + 1);
+    if (!base64_output) {
+        ESP_LOGE(TAG, "Memory allocation failed for Base64 output");
+        free(binary_data);
+        return -1;
+    }
+    base64_encode(binary_data, data_count * 2, base64_output, &output_len);
+    free(binary_data);
+
+    // Print Base64 output
+    printf("\n=== ECG Lead I Base64 Encoded ===\n");
+    printf("File: %s/%s\n", folder_name, file_name);
+    printf("Lead I Data (Base64): %s\n", base64_output);
+    printf("================================\n");
+
+    free(base64_output);
     return 0;
 }
 
@@ -837,8 +1055,8 @@ static void parse_xml_file(const char *path, patient_info_t *info)
         } else if (in_annotation && strstr(pos, "<value xsi:type=\"ST\">")) {
             char *start = strstr(pos, "<value xsi:type=\"ST\">");
             if (start) {
-                start += 20; // Skip <value xsi:type="ST">
-                while (*start && !isalnum((unsigned char)*start)) start++; // Skip non-alphanumeric characters
+                start += 20;
+                while (*start && !isalnum((unsigned char)*start)) start++;
                 char *end_tag = strstr(start, "</value>");
                 if (end_tag) {
                     *end_tag = '\0';
@@ -964,7 +1182,7 @@ static int console_read(int argc, char **argv)
     return 0;
 }
 
-    static void storage_mount_changed_cb(tinyusb_msc_event_t *event)
+static void storage_mount_changed_cb(tinyusb_msc_event_t *event)
 {
     ESP_LOGI(TAG, "Storage mounted to application: %s", event->mount_changed_data.is_mounted ? "Yes" : "No");
 }

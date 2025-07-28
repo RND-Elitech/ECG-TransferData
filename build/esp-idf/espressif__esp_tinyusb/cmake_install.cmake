@@ -1,4 +1,4 @@
-# Install script for directory: D:/Dokumen Rivaldi/Data ECG1200G/VsCode/FlashDriveTes/managed_components/espressif__esp_tinyusb
+# Install script for directory: D:/Dokumen Rivaldi/GIT/ECG TransferData/managed_components/espressif__esp_tinyusb
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)

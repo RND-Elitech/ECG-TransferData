@@ -1,6 +1,6 @@
 /* Automatically generated file; DO NOT EDIT */
 /* Espressif IoT Development Framework Linker Script */
-/* Generated from: D:\Dokumen Rivaldi\Data ECG1200G\VsCode\FlashDriveTes\build\esp-idf\esp_system\ld\sections.ld.in */
+/* Generated from: D:\Dokumen Rivaldi\GIT\ECG TransferData\build\esp-idf\esp_system\ld\sections.ld.in */
 
 /*
 
