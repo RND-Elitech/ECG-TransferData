@@ -170,6 +170,19 @@ static void parse_xml_file(const char *filename, patient_info_t *info);
 static int console_check(int argc, char **argv);
 static int console_read_file(int argc, char **argv);
 static int console_read_lead(int argc, char **argv, const char *lead_code, const char *lead_name);
+static int console_read_leadi(int argc, char **argv);
+static int console_read_leadii(int argc, char **argv);
+static int console_read_leadiii(int argc, char **argv);
+static int console_read_leadavr(int argc, char **argv);
+static int console_read_leadavl(int argc, char **argv);
+static int console_read_leadavf(int argc, char **argv);
+static int console_read_leadv1(int argc, char **argv);
+static int console_read_leadv2(int argc, char **argv);
+static int console_read_leadv3(int argc, char **argv);
+static int console_read_leadv4(int argc, char **argv);
+static int console_read_leadv5(int argc, char **argv);
+static int console_read_leadv6(int argc, char **argv);
+static void storage_mount_changed_cb(tinyusb_msc_event_t *event);
 
 /* Command structure */
 const esp_console_cmd_t cmds[] = {
@@ -389,7 +402,7 @@ static int console_read_lead(int argc, char **argv, const char *lead_code, const
                     digits_str = strdup(start);
                 } else {
                     // Handle multi-line digits
-                    char *buffer = malloc(1024);
+                    char *buffer = malloc(65536);
                     if (!buffer) {
                         ESP_LOGE(TAG, "Memory allocation failed for digits buffer");
                         fclose(fp);
@@ -405,11 +418,11 @@ static int console_read_lead(int argc, char **argv, const char *lead_code, const
                         if (strstr(pos, "</digits>")) {
                             end_tag = strstr(pos, "</digits>");
                             *end_tag = '\0';
-                            strncat(buffer, pos, 1024 - buffer_len - 1);
+                            strncat(buffer, pos, 65536 - buffer_len - 1);
                             digits_str = strdup(buffer);
                             break;
                         } else {
-                            strncat(buffer, pos, 1024 - buffer_len - 1);
+                            strncat(buffer, pos, 65536 - buffer_len - 1);
                             buffer_len = strlen(buffer);
                         }
                     }
