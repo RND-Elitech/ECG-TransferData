@@ -793,3 +793,211 @@
 10456	10886	7754577242673842	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/.bin_timestamp	7b93a94ea0413333
 10886	11008	7754577242709326	esp-idf/esptool_py/CMakeFiles/app_check_size	cba9a48b7a484493
 10886	11008	7754577242709326	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esptool_py/CMakeFiles/app_check_size	cba9a48b7a484493
+1102	1855	7754656148286033	bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+1102	1855	7754656148286033	bootloader/bootloader.elf	80b5bfc5816d893e
+1102	1855	7754656148286033	bootloader/bootloader.bin	80b5bfc5816d893e
+1102	1855	7754656148286033	bootloader/bootloader.map	80b5bfc5816d893e
+1102	1855	7754656148286033	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+1102	1855	7754656148286033	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.elf	80b5bfc5816d893e
+1102	1855	7754656148286033	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.bin	80b5bfc5816d893e
+1102	1855	7754656148286033	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.map	80b5bfc5816d893e
+1855	1895	7754656155814709	bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+1855	1895	7754656155814709	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+1895	1949	7754656156721206	CMakeFiles/bootloader-complete	849cc28559641c05
+1895	1949	7754656156721206	bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+1895	1949	7754656156721206	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/CMakeFiles/bootloader-complete	849cc28559641c05
+1895	1949	7754656156721206	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+331	514	7754656355665677	bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+331	514	7754656355665677	bootloader/bootloader.elf	80b5bfc5816d893e
+331	514	7754656355665677	bootloader/bootloader.bin	80b5bfc5816d893e
+331	514	7754656355665677	bootloader/bootloader.map	80b5bfc5816d893e
+331	514	7754656355665677	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+331	514	7754656355665677	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.elf	80b5bfc5816d893e
+331	514	7754656355665677	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.bin	80b5bfc5816d893e
+331	514	7754656355665677	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.map	80b5bfc5816d893e
+515	552	7754656357508103	bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+515	552	7754656357508103	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+552	623	7754656358539252	CMakeFiles/bootloader-complete	849cc28559641c05
+552	623	7754656358539252	bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+552	623	7754656358539252	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/CMakeFiles/bootloader-complete	849cc28559641c05
+552	623	7754656358539252	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+325	1178	7754656355614443	esp-idf/main/CMakeFiles/__idf_main.dir/tusb_msc_main.c.obj	12956508dde46b3c
+1178	1464	7754656364139227	esp-idf/main/libmain.a	b6b257a006938467
+1464	9254	7754656444668366	esp-idf/esp_system/ld/sections.ld	ece09caf80387a29
+1464	9254	7754656444668366	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esp_system/ld/sections.ld	ece09caf80387a29
+9254	12210	7754656444901006	FlashDriveTes.elf	bcb47fa7b1b2d043
+12210	12705	7754656479360135	.bin_timestamp	7b93a94ea0413333
+12210	12705	7754656479360135	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/.bin_timestamp	7b93a94ea0413333
+12705	12891	7754656479410128	esp-idf/esptool_py/CMakeFiles/app_check_size	cba9a48b7a484493
+12705	12891	7754656479410128	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esptool_py/CMakeFiles/app_check_size	cba9a48b7a484493
+1056	1830	7754658832614477	bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+1056	1830	7754658832614477	bootloader/bootloader.elf	80b5bfc5816d893e
+1056	1830	7754658832614477	bootloader/bootloader.bin	80b5bfc5816d893e
+1056	1830	7754658832614477	bootloader/bootloader.map	80b5bfc5816d893e
+1056	1830	7754658832614477	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+1056	1830	7754658832614477	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.elf	80b5bfc5816d893e
+1056	1830	7754658832614477	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.bin	80b5bfc5816d893e
+1056	1830	7754658832614477	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.map	80b5bfc5816d893e
+1830	1876	7754658840356806	bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+1830	1876	7754658840356806	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+1877	1926	7754658841283754	CMakeFiles/bootloader-complete	849cc28559641c05
+1877	1926	7754658841283754	bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+1877	1926	7754658841283754	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/CMakeFiles/bootloader-complete	849cc28559641c05
+1877	1926	7754658841283754	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+250	440	7754658949651265	bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+250	440	7754658949651265	bootloader/bootloader.elf	80b5bfc5816d893e
+250	440	7754658949651265	bootloader/bootloader.bin	80b5bfc5816d893e
+250	440	7754658949651265	bootloader/bootloader.map	80b5bfc5816d893e
+250	440	7754658949651265	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+250	440	7754658949651265	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.elf	80b5bfc5816d893e
+250	440	7754658949651265	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.bin	80b5bfc5816d893e
+250	440	7754658949651265	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.map	80b5bfc5816d893e
+441	466	7754658951558687	bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+441	466	7754658951558687	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+466	522	7754658952324954	CMakeFiles/bootloader-complete	849cc28559641c05
+466	522	7754658952324954	bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+466	522	7754658952324954	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/CMakeFiles/bootloader-complete	849cc28559641c05
+466	522	7754658952324954	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+244	789	7754658949591353	esp-idf/main/CMakeFiles/__idf_main.dir/tusb_msc_main.c.obj	12956508dde46b3c
+790	884	7754658955042465	esp-idf/main/libmain.a	b6b257a006938467
+884	6292	7754659009827964	esp-idf/esp_system/ld/sections.ld	ece09caf80387a29
+884	6292	7754659009827964	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esp_system/ld/sections.ld	ece09caf80387a29
+6292	7898	7754659010073508	FlashDriveTes.elf	bcb47fa7b1b2d043
+7898	8202	7754659029130407	.bin_timestamp	7b93a94ea0413333
+7898	8202	7754659029130407	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/.bin_timestamp	7b93a94ea0413333
+8202	8321	7754659029171293	esp-idf/esptool_py/CMakeFiles/app_check_size	cba9a48b7a484493
+8202	8321	7754659029171293	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esptool_py/CMakeFiles/app_check_size	cba9a48b7a484493
+257	387	7754662200899026	bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+257	387	7754662200899026	bootloader/bootloader.elf	80b5bfc5816d893e
+257	387	7754662200899026	bootloader/bootloader.bin	80b5bfc5816d893e
+257	387	7754662200899026	bootloader/bootloader.map	80b5bfc5816d893e
+257	387	7754662200899026	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+257	387	7754662200899026	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.elf	80b5bfc5816d893e
+257	387	7754662200899026	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.bin	80b5bfc5816d893e
+257	387	7754662200899026	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.map	80b5bfc5816d893e
+387	413	7754662202197579	bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+387	413	7754662202197579	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+413	466	7754662202950249	CMakeFiles/bootloader-complete	849cc28559641c05
+413	466	7754662202950249	bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+413	466	7754662202950249	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/CMakeFiles/bootloader-complete	849cc28559641c05
+413	466	7754662202950249	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+64	192	7754662441714743	bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+64	192	7754662441714743	bootloader/bootloader.elf	80b5bfc5816d893e
+64	192	7754662441714743	bootloader/bootloader.bin	80b5bfc5816d893e
+64	192	7754662441714743	bootloader/bootloader.map	80b5bfc5816d893e
+64	192	7754662441714743	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+64	192	7754662441714743	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.elf	80b5bfc5816d893e
+64	192	7754662441714743	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.bin	80b5bfc5816d893e
+64	192	7754662441714743	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.map	80b5bfc5816d893e
+193	217	7754662442995657	bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+193	217	7754662442995657	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+217	269	7754662443720530	CMakeFiles/bootloader-complete	849cc28559641c05
+217	269	7754662443720530	bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+217	269	7754662443720530	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/CMakeFiles/bootloader-complete	849cc28559641c05
+217	269	7754662443720530	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+59	509	7754662441663234	esp-idf/main/CMakeFiles/__idf_main.dir/tusb_msc_main.c.obj	12956508dde46b3c
+509	582	7754662446166487	esp-idf/main/libmain.a	b6b257a006938467
+582	4796	7754662488791750	esp-idf/esp_system/ld/sections.ld	ece09caf80387a29
+582	4796	7754662488791750	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esp_system/ld/sections.ld	ece09caf80387a29
+4796	5996	7754662489031486	FlashDriveTes.elf	bcb47fa7b1b2d043
+5996	6265	7754662503682714	.bin_timestamp	7b93a94ea0413333
+5996	6265	7754662503682714	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/.bin_timestamp	7b93a94ea0413333
+6265	6354	7754662503724745	esp-idf/esptool_py/CMakeFiles/app_check_size	cba9a48b7a484493
+6265	6354	7754662503724745	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esptool_py/CMakeFiles/app_check_size	cba9a48b7a484493
+366	716	7754679024909830	bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+366	716	7754679024909830	bootloader/bootloader.elf	80b5bfc5816d893e
+366	716	7754679024909830	bootloader/bootloader.bin	80b5bfc5816d893e
+366	716	7754679024909830	bootloader/bootloader.map	80b5bfc5816d893e
+366	716	7754679024909830	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+366	716	7754679024909830	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.elf	80b5bfc5816d893e
+366	716	7754679024909830	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.bin	80b5bfc5816d893e
+366	716	7754679024909830	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.map	80b5bfc5816d893e
+716	745	7754679028414793	bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+716	745	7754679028414793	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+745	799	7754679029199272	CMakeFiles/bootloader-complete	849cc28559641c05
+745	799	7754679029199272	bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+745	799	7754679029199272	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/CMakeFiles/bootloader-complete	849cc28559641c05
+745	799	7754679029199272	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+360	1064	7754679024850157	esp-idf/main/CMakeFiles/__idf_main.dir/tusb_msc_main.c.obj	12956508dde46b3c
+1064	1147	7754679031898823	esp-idf/main/libmain.a	b6b257a006938467
+1147	6107	7754679082079041	esp-idf/esp_system/ld/sections.ld	ece09caf80387a29
+1147	6107	7754679082079041	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esp_system/ld/sections.ld	ece09caf80387a29
+6108	7727	7754679082324763	FlashDriveTes.elf	bcb47fa7b1b2d043
+7727	8013	7754679101338036	.bin_timestamp	7b93a94ea0413333
+7727	8013	7754679101338036	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/.bin_timestamp	7b93a94ea0413333
+8013	8115	7754679101378041	esp-idf/esptool_py/CMakeFiles/app_check_size	cba9a48b7a484493
+8013	8115	7754679101378041	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esptool_py/CMakeFiles/app_check_size	cba9a48b7a484493
+1456	2334	7754681800807033	bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+1456	2334	7754681800807033	bootloader/bootloader.elf	80b5bfc5816d893e
+1456	2334	7754681800807033	bootloader/bootloader.bin	80b5bfc5816d893e
+1456	2334	7754681800807033	bootloader/bootloader.map	80b5bfc5816d893e
+1456	2334	7754681800807033	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+1456	2334	7754681800807033	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.elf	80b5bfc5816d893e
+1456	2334	7754681800807033	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.bin	80b5bfc5816d893e
+1456	2334	7754681800807033	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.map	80b5bfc5816d893e
+2335	2360	7754681809598634	bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+2335	2360	7754681809598634	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+2360	2412	7754681810334342	CMakeFiles/bootloader-complete	849cc28559641c05
+2360	2412	7754681810334342	bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+2360	2412	7754681810334342	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/CMakeFiles/bootloader-complete	849cc28559641c05
+2360	2412	7754681810334342	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+1448	2564	7754681800736961	esp-idf/main/CMakeFiles/__idf_main.dir/tusb_msc_main.c.obj	12956508dde46b3c
+2564	2752	7754681811891420	esp-idf/main/libmain.a	b6b257a006938467
+2752	8548	7754681871474322	esp-idf/esp_system/ld/sections.ld	ece09caf80387a29
+2752	8548	7754681871474322	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esp_system/ld/sections.ld	ece09caf80387a29
+8548	10232	7754681871729139	FlashDriveTes.elf	bcb47fa7b1b2d043
+10233	10615	7754681892331230	.bin_timestamp	7b93a94ea0413333
+10233	10615	7754681892331230	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/.bin_timestamp	7b93a94ea0413333
+10616	10720	7754681892402187	esp-idf/esptool_py/CMakeFiles/app_check_size	cba9a48b7a484493
+10616	10720	7754681892402187	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esptool_py/CMakeFiles/app_check_size	cba9a48b7a484493
+286	632	7754684246318222	bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+286	632	7754684246318222	bootloader/bootloader.elf	80b5bfc5816d893e
+286	632	7754684246318222	bootloader/bootloader.bin	80b5bfc5816d893e
+286	632	7754684246318222	bootloader/bootloader.map	80b5bfc5816d893e
+286	632	7754684246318222	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+286	632	7754684246318222	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.elf	80b5bfc5816d893e
+286	632	7754684246318222	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.bin	80b5bfc5816d893e
+286	632	7754684246318222	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.map	80b5bfc5816d893e
+633	661	7754684249792964	bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+633	661	7754684249792964	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+661	715	7754684250496695	CMakeFiles/bootloader-complete	849cc28559641c05
+661	715	7754684250496695	bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+661	715	7754684250496695	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/CMakeFiles/bootloader-complete	849cc28559641c05
+661	715	7754684250496695	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+1652	2446	7754685579937221	bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+1652	2446	7754685579937221	bootloader/bootloader.elf	80b5bfc5816d893e
+1652	2446	7754685579937221	bootloader/bootloader.bin	80b5bfc5816d893e
+1652	2446	7754685579937221	bootloader/bootloader.map	80b5bfc5816d893e
+1652	2446	7754685579937221	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+1652	2446	7754685579937221	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.elf	80b5bfc5816d893e
+1652	2446	7754685579937221	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.bin	80b5bfc5816d893e
+1652	2446	7754685579937221	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.map	80b5bfc5816d893e
+2446	2473	7754685587755467	bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+2446	2473	7754685587755467	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+2473	2524	7754685588594877	CMakeFiles/bootloader-complete	849cc28559641c05
+2473	2524	7754685588594877	bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+2473	2524	7754685588594877	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/CMakeFiles/bootloader-complete	849cc28559641c05
+2473	2524	7754685588594877	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+1645	9814	7754685579760262	esp-idf/main/CMakeFiles/__idf_main.dir/tusb_msc_main.c.obj	12956508dde46b3c
+9815	9992	7754685661564438	esp-idf/main/libmain.a	b6b257a006938467
+9992	15169	7754685714869090	esp-idf/esp_system/ld/sections.ld	ece09caf80387a29
+9992	15169	7754685714869090	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esp_system/ld/sections.ld	ece09caf80387a29
+15169	16702	7754685715113128	FlashDriveTes.elf	bcb47fa7b1b2d043
+16703	17028	7754685733634420	.bin_timestamp	7b93a94ea0413333
+16703	17028	7754685733634420	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/.bin_timestamp	7b93a94ea0413333
+17028	17166	7754685733703351	esp-idf/esptool_py/CMakeFiles/app_check_size	cba9a48b7a484493
+17028	17166	7754685733703351	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esptool_py/CMakeFiles/app_check_size	cba9a48b7a484493
+803	1077	7754730501344818	bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+803	1077	7754730501344818	bootloader/bootloader.elf	80b5bfc5816d893e
+803	1077	7754730501344818	bootloader/bootloader.bin	80b5bfc5816d893e
+803	1077	7754730501344818	bootloader/bootloader.map	80b5bfc5816d893e
+803	1077	7754730501344818	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-build	80b5bfc5816d893e
+803	1077	7754730501344818	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.elf	80b5bfc5816d893e
+803	1077	7754730501344818	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.bin	80b5bfc5816d893e
+803	1077	7754730501344818	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.map	80b5bfc5816d893e
+1077	1105	7754730504107579	bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+1077	1105	7754730504107579	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-install	9b269280f45ea335
+1105	1160	7754730504884505	CMakeFiles/bootloader-complete	849cc28559641c05
+1105	1160	7754730504884505	bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
+1105	1160	7754730504884505	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/CMakeFiles/bootloader-complete	849cc28559641c05
+1105	1160	7754730504884505	D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader-prefix/src/bootloader-stamp/bootloader-done	849cc28559641c05
