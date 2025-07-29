@@ -182,10 +182,17 @@ static int console_read_leadv3(int argc, char **argv);
 static int console_read_leadv4(int argc, char **argv);
 static int console_read_leadv5(int argc, char **argv);
 static int console_read_leadv6(int argc, char **argv);
+static int console_mount(int argc, char **argv);
 static void storage_mount_changed_cb(tinyusb_msc_event_t *event);
 
 /* Command structure */
 const esp_console_cmd_t cmds[] = {
+    {
+    .command = "mount",
+    .help = "Mount storage to application",
+    .hint = NULL,
+    .func = &console_mount,
+    },
     {
         .command = "check",
         .help = "List folders matching ecg_archive in /data and their XML files",
@@ -309,6 +316,17 @@ const esp_console_cmd_t cmds[] = {
 };
 
 /* Generic function to read ECG lead data */
+
+static int console_mount(int argc, char **argv)
+{
+    if (!tinyusb_msc_storage_in_use_by_usb_host()) {
+        ESP_LOGE(TAG, "Storage is already mounted to application");
+        return -1;
+    }
+    ESP_LOGI(TAG, "Mounting storage to application...");
+    _mount();
+    return 0;
+}
 static int console_read_lead(int argc, char **argv, const char *lead_code, const char *lead_name)
 {
     if (tinyusb_msc_storage_in_use_by_usb_host()) {
