@@ -361,12 +361,31 @@ static int console_read_lead(int argc, char **argv, const char *lead_code, const
         return -1;
     }
 
+    // Create debug file for raw digits
+    char debug_file[768];
+    snprintf(debug_file, sizeof(debug_file), "%s/%s_digits.txt", folder_path, lead_name);
+    FILE *debug_fp = fopen(debug_file, "w");
+    if (!debug_fp) {
+        ESP_LOGE(TAG, "Failed to create debug file %s", debug_file);
+        fclose(fp);
+        return -1;
+    }
+
     // Parse XML to find lead data
     char line[512];
-    char *digits_str = NULL;
     bool in_sequence = false;
     bool is_target_lead = false;
     bool in_value = false;
+    bool in_digits = false;
+    bool digits_found = false;
+    char *buffer = malloc(92160); // Buffer for multi-line digits
+    if (!buffer) {
+        ESP_LOGE(TAG, "Memory allocation failed for digits buffer");
+        fclose(fp);
+        fclose(debug_fp);
+        return -1;
+    }
+    size_t buffer_len = 0;
 
     while (fgets(line, sizeof(line), fp)) {
         // Remove leading/trailing whitespace
@@ -380,10 +399,29 @@ static int console_read_lead(int argc, char **argv, const char *lead_code, const
             in_sequence = true;
             is_target_lead = false;
             in_value = false;
+            in_digits = false;
         } else if (strstr(pos, "</sequence>")) {
             in_sequence = false;
             in_value = false;
-            if (is_target_lead && digits_str) {
+            in_digits = false;
+            if (is_target_lead && digits_found) {
+                // Process remaining buffer
+                if (buffer_len > 0) {
+                    buffer[buffer_len] = '\0';
+                    ESP_LOGI(TAG, "Processing multi-line digits buffer: %s", buffer);
+                    // Tokenize and write valid numbers
+                    char *token = strtok(buffer, " \t\n");
+                    while (token) {
+                        char *endptr;
+                        strtol(token, &endptr, 10);
+                        if (*endptr == '\0') {
+                            fprintf(debug_fp, "%s ", token);
+                        } else {
+                            ESP_LOGW(TAG, "Invalid number in digits buffer: %s", token);
+                        }
+                        token = strtok(NULL, " \t\n");
+                    }
+                }
                 break;
             }
         }
@@ -400,100 +438,206 @@ static int console_read_lead(int argc, char **argv, const char *lead_code, const
 
         // Capture digits within value
         if (in_sequence && is_target_lead && in_value && strstr(pos, "<digits>")) {
-            char *start = strstr(pos, "<digits>");
-            if (start) {
-                start += 8;
-                char *end_tag = strstr(start, "</digits>");
-                if (end_tag) {
-                    *end_tag = '\0';
-                    digits_str = strdup(start);
-                } else {
-                    // Handle multi-line digits
-                    char *buffer = malloc(65536);
-                    if (!buffer) {
-                        ESP_LOGE(TAG, "Memory allocation failed for digits buffer");
-                        fclose(fp);
-                        return -1;
+            in_digits = true;
+            char *start = strstr(pos, "<digits>") + 8;
+            char *end_tag = strstr(start, "</digits>");
+            if (end_tag) {
+                *end_tag = '\0';
+                ESP_LOGI(TAG, "Processing single-line digits: %s", start);
+                // Tokenize and write valid numbers
+                char *temp = strdup(start);
+                if (!temp) {
+                    ESP_LOGE(TAG, "Memory allocation failed for temp buffer");
+                    free(buffer);
+                    fclose(fp);
+                    fclose(debug_fp);
+                    return -1;
+                }
+                char *token = strtok(temp, " \t\n");
+                while (token) {
+                    // Handle joined negative numbers (e.g., "-27-27")
+                    char *ptr = token;
+                    char *token_start = token;
+                    while (*ptr) {
+                        if (*ptr == '-' && isdigit((unsigned char)*(ptr + 1)) && ptr != token && *(ptr - 1) != ' ') {
+                            *ptr = '\0';
+                            char *endptr;
+                            strtol(token_start, &endptr, 10);
+                            if (*endptr == '\0') {
+                                fprintf(debug_fp, "%s ", token_start);
+                            } else {
+                                ESP_LOGW(TAG, "Invalid number in digits: %s", token_start);
+                            }
+                            token_start = ptr;
+                        }
+                        ptr++;
                     }
-                    strcpy(buffer, start);
-                    size_t buffer_len = strlen(start);
-                    while (fgets(line, sizeof(line), fp)) {
-                        pos = line;
-                        while (*pos && isspace((unsigned char)*pos)) pos++;
-                        end = pos + strlen(pos);
-                        while (end > pos && isspace((unsigned char)*(end - 1))) *(--end) = '\0';
-                        if (strstr(pos, "</digits>")) {
-                            end_tag = strstr(pos, "</digits>");
-                            *end_tag = '\0';
-                            strncat(buffer, pos, 65536 - buffer_len - 1);
-                            digits_str = strdup(buffer);
-                            break;
+                    if (ptr != token_start) {
+                        *ptr = '\0';
+                        char *endptr;
+                        strtol(token_start, &endptr, 10);
+                        if (*endptr == '\0') {
+                            fprintf(debug_fp, "%s ", token_start);
                         } else {
-                            strncat(buffer, pos, 65536 - buffer_len - 1);
-                            buffer_len = strlen(buffer);
+                            ESP_LOGW(TAG, "Invalid number in digits: %s", token_start);
                         }
                     }
-                    free(buffer);
+                    token = strtok(NULL, " \t\n");
                 }
+                free(temp);
+                digits_found = true;
+                in_digits = false;
+            } else {
+                // Start buffering multi-line digits
+                buffer_len = strlen(start);
+                if (buffer_len >= 92160) {
+                    ESP_LOGE(TAG, "Buffer overflow for digits data");
+                    free(buffer);
+                    fclose(fp);
+                    fclose(debug_fp);
+                    return -1;
+                }
+                strcpy(buffer, start);
+                digits_found = true;
+            }
+        } else if (in_sequence && is_target_lead && in_value && in_digits) {
+            // Handle multi-line digits
+            char *end_tag = strstr(pos, "</digits>");
+            if (end_tag) {
+                *end_tag = '\0';
+                if (buffer_len + strlen(pos) >= 92160) {
+                    ESP_LOGE(TAG, "Buffer overflow for digits data");
+                    free(buffer);
+                    fclose(fp);
+                    fclose(debug_fp);
+                    return -1;
+                }
+                strncat(buffer, pos, 92160 - buffer_len - 1);
+                buffer_len += strlen(pos);
+                buffer[buffer_len] = '\0';
+                ESP_LOGI(TAG, "Processing multi-line digits buffer: %s", buffer);
+                // Tokenize and write valid numbers
+                char *token = strtok(buffer, " \t\n");
+                while (token) {
+                    char *endptr;
+                    strtol(token, &endptr, 10);
+                    if (*endptr == '\0') {
+                        fprintf(debug_fp, "%s ", token);
+                    } else {
+                        ESP_LOGW(TAG, "Invalid number in digits buffer: %s", token);
+                    }
+                    token = strtok(NULL, " \t\n");
+                }
+                buffer_len = 0; // Reset buffer
+                in_digits = false;
+            } else {
+                if (buffer_len + strlen(pos) >= 92160) {
+                    ESP_LOGE(TAG, "Buffer overflow for digits data");
+                    free(buffer);
+                    fclose(fp);
+                    fclose(debug_fp);
+                    return -1;
+                }
+                strncat(buffer, pos, 92160 - buffer_len - 1);
+                buffer_len += strlen(pos);
             }
         }
     }
+    free(buffer);
+    fclose(debug_fp);
     fclose(fp);
 
-    if (!digits_str) {
+    if (!digits_found) {
         ESP_LOGE(TAG, "No %s data found in %s", lead_name, file_path);
+        remove(debug_file); // Remove empty debug file
+        return -1;
+    }
+    ESP_LOGI(TAG, "Raw %s digits saved to %s for debugging", lead_name, debug_file);
+
+    // Reopen debug file to read digits for Base64 encoding
+    debug_fp = fopen(debug_file, "r");
+    if (!debug_fp) {
+        ESP_LOGE(TAG, "Failed to open debug file %s for reading", debug_file);
         return -1;
     }
 
-    // Parse digits string into uint16_t array
+    // Log contents of debug file for debugging
+    char read_buffer[512];
+    if (fgets(read_buffer, sizeof(read_buffer), debug_fp)) {
+        read_buffer[strcspn(read_buffer, "\n")] = '\0';
+        ESP_LOGI(TAG, "Debug file content sample: %s", read_buffer);
+    }
+    rewind(debug_fp);
+
+    // Parse digits from debug file into uint16_t array
     uint16_t *data = NULL;
     size_t data_count = 0;
-    char *token = strtok(digits_str, " ");
-    while (token) {
-        data = realloc(data, (data_count + 1) * sizeof(uint16_t));
-        if (!data) {
-            ESP_LOGE(TAG, "Memory allocation failed");
-            free(digits_str);
-            return -1;
+    while (fgets(read_buffer, sizeof(read_buffer), debug_fp)) {
+        char *token = strtok(read_buffer, " \t\n");
+        while (token) {
+            char *endptr;
+            long value = strtol(token, &endptr, 10);
+            if (*endptr != '\0') {
+                ESP_LOGW(TAG, "Invalid number in debug file: %s", token);
+                token = strtok(NULL, " \t\n");
+                continue;
+            }
+            data = realloc(data, (data_count + 1) * sizeof(uint16_t));
+            if (!data) {
+                ESP_LOGE(TAG, "Memory allocation failed for data array");
+                fclose(debug_fp);
+                return -1;
+            }
+            data[data_count] = (uint16_t)(value + 32768); // Offset for negative values
+            data_count++;
+            token = strtok(NULL, " \t\n");
         }
-        int value = atoi(token);
-        data[data_count] = (uint16_t)(value + 32768); // Offset for negative values
-        data_count++;
-        token = strtok(NULL, " ");
     }
-    free(digits_str);
+    fclose(debug_fp);
+
+    // Log data count for debugging
+    ESP_LOGI(TAG, "Parsed %u digits from debug file", data_count);
 
     // Convert to binary array (2 bytes per value, little-endian)
-    uint8_t *binary_data = malloc(data_count * 2);
-    if (!binary_data) {
-        ESP_LOGE(TAG, "Memory allocation failed for binary data");
-        free(data);
-        return -1;
-    }
-    for (size_t i = 0; i < data_count; i++) {
-        binary_data[i * 2] = data[i] & 0xFF;        // Low byte
-        binary_data[i * 2 + 1] = (data[i] >> 8) & 0xFF; // High byte
+    uint8_t *binary_data = NULL;
+    if (data_count > 0) {
+        binary_data = malloc(data_count * 2);
+        if (!binary_data) {
+            ESP_LOGE(TAG, "Memory allocation failed for binary data");
+            free(data);
+            return -1;
+        }
+        for (size_t i = 0; i < data_count; i++) {
+            binary_data[i * 2] = data[i] & 0xFF;        // Low byte
+            binary_data[i * 2 + 1] = (data[i] >> 8) & 0xFF; // High byte
+        }
     }
     free(data);
 
     // Encode to Base64
-    size_t output_len;
-    char *base64_output = malloc(((data_count * 2 + 2) / 3) * 4 + 1);
-    if (!base64_output) {
-        ESP_LOGE(TAG, "Memory allocation failed for Base64 output");
+    char *base64_output = NULL;
+    size_t output_len = 0;
+    if (data_count > 0) {
+        base64_output = malloc(((data_count * 2 + 2) / 3) * 4 + 1);
+        if (!base64_output) {
+            ESP_LOGE(TAG, "Memory allocation failed for Base64 output");
+            free(binary_data);
+            return -1;
+        }
+        base64_encode(binary_data, data_count * 2, base64_output, &output_len);
         free(binary_data);
-        return -1;
     }
-    base64_encode(binary_data, data_count * 2, base64_output, &output_len);
-    free(binary_data);
 
     // Print Base64 output
     printf("\n=== ECG %s Base64 Encoded ===\n", lead_name);
     printf("File: %s/%s\n", folder_name, file_name);
-    printf("%s Data (Base64): %s\n", lead_name, base64_output);
+    printf("%s Data (Base64): %s\n", lead_name, base64_output ? base64_output : "No data");
+    printf("Debug file created: %s\n", debug_file);
     printf("================================\n");
 
-    free(base64_output);
+    if (base64_output) {
+        free(base64_output);
+    }
     return 0;
 }
 
@@ -1455,7 +1599,7 @@ void app_main(void)
 
     // Initialize console
     esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
-    repl_config.task_stack_size = 8192;
+    repl_config.task_stack_size = 92160;
     repl_config.prompt = PROMPT_STR ">";
     repl_config.max_cmdline_length = 64;
 
