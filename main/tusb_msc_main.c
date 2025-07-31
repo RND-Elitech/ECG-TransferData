@@ -25,9 +25,14 @@
 #include "driver/gpio.h"
 #include "tinyusb.h"
 #include "tusb_msc_storage.h"
-#ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SDMMC
+#include "esp_http_client.h"
 #include "diskio_impl.h"
 #include "diskio_sdmmc.h"
+#include "nvs_flash.h"
+#include "esp_wifi.h"
+#include "esp_event.h"
+#include "esp_netif.h"
+#ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SDMMC
 #if CONFIG_EXAMPLE_SD_PWR_CTRL_LDO_INTERNAL_IO
 #include "sd_pwr_ctrl_by_on_chip_ldo.h"
 #endif
@@ -159,6 +164,19 @@ static void base64_encode(const uint8_t *input, size_t input_len, char *output, 
     output[j] = '\0';
 }
 
+static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
+{
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+        esp_wifi_connect();
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        ESP_LOGI(TAG, "Wi-Fi terputus, mencoba menghubungkan kembali...");
+        esp_wifi_connect();
+    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
+        ESP_LOGI(TAG, "Wi-Fi terhubung, IP: " IPSTR, IP2STR(&event->ip_info.ip));
+    }
+}
+
 /* Function prototypes */
 static int console_unmount(int argc, char **argv);
 static int console_read(int argc, char **argv);
@@ -182,11 +200,18 @@ static int console_read_leadv3(int argc, char **argv);
 static int console_read_leadv4(int argc, char **argv);
 static int console_read_leadv5(int argc, char **argv);
 static int console_read_leadv6(int argc, char **argv);
+static int console_upload(int argc, char **argv);
 static void storage_mount_changed_cb(tinyusb_msc_event_t *event);
 static int console_mount(int argc, char **argv);
 
 /* Command structure */
 const esp_console_cmd_t cmds[] = {
+    {
+        .command = "upload",
+        .help = "Unggah file XML dari folder tertentu ke server (contoh: upload ecg_archive data.XML)",
+        .hint = "<folder_name> <file_name>",
+        .func = &console_upload,
+    },
     {
         .command = "check",
         .help = "List folders matching ecg_archive in /data and their XML files",
@@ -314,6 +339,121 @@ const esp_console_cmd_t cmds[] = {
         .func = &console_read_leadv6,
     }
 };
+
+static int console_upload(int argc, char **argv)
+{
+    if (tinyusb_msc_storage_in_use_by_usb_host()) {
+        ESP_LOGE(TAG, "Storage sedang digunakan oleh host USB. Tidak bisa mengunggah file.");
+        return -1;
+    }
+    if (argc != 3) {
+        ESP_LOGE(TAG, "Penggunaan: upload <nama_folder> <nama_file>");
+        return -1;
+    }
+    const char *folder_name = argv[1];
+    const char *file_name = argv[2];
+
+    // Validasi folder
+    if (strncmp(folder_name, "ecg_archive", 11) != 0) {
+        ESP_LOGE(TAG, "Folder harus dimulai dengan 'ecg_archive'");
+        return -1;
+    }
+
+    // Cek folder
+    char folder_path[512];
+    snprintf(folder_path, sizeof(folder_path), "%s/%s", BASE_PATH, folder_name);
+    DIR *dir = opendir(folder_path);
+    if (!dir) {
+        ESP_LOGE(TAG, "Folder %s tidak ditemukan", folder_path);
+        return -1;
+    }
+    closedir(dir);
+
+    // Cek file
+    char file_path[768];
+    snprintf(file_path, sizeof(file_path), "%s/%s", folder_path, file_name);
+    if (!strstr(file_name, ".XML")) {
+        ESP_LOGE(TAG, "File harus .XML");
+        return -1;
+    }
+
+    FILE *fp = fopen(file_path, "r");
+    if (!fp) {
+        ESP_LOGE(TAG, "Gagal buka file: %s", file_path);
+        return -1;
+    }
+
+    // Dapatkan ukuran file
+    fseek(fp, 0, SEEK_END);
+    size_t file_size = ftell(fp);
+    rewind(fp);
+
+    // Validasi ukuran file (opsional)
+    if (file_size < 10) {
+        ESP_LOGE(TAG, "File terlalu kecil");
+        fclose(fp);
+        return -1;
+    }
+
+    // Konfigurasi HTTP client
+    esp_http_client_config_t config = {
+        .url = "http://192.168.13.145/upload.php",
+        .method = HTTP_METHOD_POST,
+        .timeout_ms = 30000,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (!client) {
+        ESP_LOGE(TAG, "Gagal inisialisasi HTTP client");
+        fclose(fp);
+        return -1;
+    }
+
+    // Set header
+    esp_http_client_set_header(client, "Content-Type", "application/xml");
+
+    // Buka koneksi dengan ukuran diketahui
+    esp_err_t err = esp_http_client_open(client, file_size);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Gagal buka HTTP: %s", esp_err_to_name(err));
+        esp_http_client_cleanup(client);
+        fclose(fp);
+        return -1;
+    }
+
+    ESP_LOGI(TAG, "Mengunggah file: %s (%d bytes)", file_name, file_size);
+
+    // Kirim per chunk
+    uint8_t buffer[1024];
+    int read_bytes;
+    while ((read_bytes = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
+        int written = esp_http_client_write(client, (char*)buffer, read_bytes);
+        if (written != read_bytes) {
+            ESP_LOGE(TAG, "Hanya tertulis %d dari %d byte", written, read_bytes);
+            fclose(fp);
+            esp_http_client_cleanup(client);
+            return -1;
+        }
+    }
+    fclose(fp);
+
+    // Dapatkan respons
+    esp_err_t perform_err = esp_http_client_perform(client);
+    if (perform_err != ESP_OK) {
+        ESP_LOGE(TAG, "Upload gagal: %s", esp_err_to_name(perform_err));
+        esp_http_client_cleanup(client);
+        return -1;
+    }
+
+    int status = esp_http_client_get_status_code(client);
+    if (status == 200) {
+        ESP_LOGI(TAG, "Upload berhasil!");
+    } else {
+        ESP_LOGE(TAG, "Upload gagal, status: %d", status);
+    }
+
+    esp_http_client_cleanup(client);
+    return (status == 200) ? 0 : -1;
+}
 
 /* Generic function to read ECG lead data */
 static int console_read_lead(int argc, char **argv, const char *lead_code, const char *lead_name)
@@ -1554,6 +1694,59 @@ static int console_mount(int argc, char **argv)
 
 void app_main(void)
 {
+    ESP_LOGI(TAG, "Menginisialisasi Wi-Fi...");
+
+    // Inisialisasi NVS
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
+    // Inisialisasi TCP/IP stack
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_create_default_wifi_sta();
+
+    // Inisialisasi Wi-Fi
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    // Daftarkan handler untuk event Wi-Fi
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
+
+    // Konfigurasi Wi-Fi sebagai station
+    wifi_config_t wifi_config = {
+        .sta = {
+            .ssid = "Elitech", // Ganti dengan SSID Wi-Fi
+            .password = "wifis1nko", // Ganti dengan kata sandi Wi-Fi
+        },
+    };
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    ESP_LOGI(TAG, "Menunggu koneksi Wi-Fi...");
+    // Tunggu hingga terhubung (timeout 30 detik)
+    TickType_t start_time = xTaskGetTickCount();
+    while (true) {
+        esp_netif_ip_info_t ip_info;
+        if (esp_netif_get_ip_info(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), &ip_info) == ESP_OK && ip_info.ip.addr != 0) {
+            ESP_LOGI(TAG, "Wi-Fi berhasil terhubung");
+            break;
+        }
+        if ((xTaskGetTickCount() - start_time) > pdMS_TO_TICKS(30000)) {
+            ESP_LOGE(TAG, "Gagal terhubung ke Wi-Fi dalam 30 detik");
+            return;
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+    
+    ESP_LOGI(TAG, "Ping ke server 192.168.13.145...");
+    system("ping 192.168.13.145");
+    
     ESP_LOGI(TAG, "Initializing storage...");
 
 #ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
