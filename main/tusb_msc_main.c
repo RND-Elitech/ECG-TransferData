@@ -395,6 +395,8 @@ static int console_mount(int argc, char **argv)
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
     esp_mqtt_event_handle_t event = event_data;
+    char full_path[512]; // Deklarasi di awal fungsi
+
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "Terhubung ke MQTT broker");
@@ -412,9 +414,61 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
                 // Trigger upload
                 if (event->data_len == strlen("upload") && strncmp(event->data, "upload", event->data_len) == 0) {
                     ESP_LOGI(TAG, "Menerima perintah upload, memulai proses...");
-                    ESP_ERROR_CHECK(tinyusb_msc_storage_mount(BASE_PATH)); // Mount storage langsung
+                    ESP_ERROR_CHECK(tinyusb_msc_storage_mount(BASE_PATH)); // Mount storage
                     console_upload(0, NULL); // Jalankan upload
                     vTaskDelay(pdMS_TO_TICKS(1000)); // Tunggu proses selesai
+
+                    // Hapus folder ecg_archive dan isinya di dalam BASE_PATH
+                    ESP_LOGI(TAG, "Menghapus folder %s/ecg_archive dan isinya...", BASE_PATH);
+                    char path[64];
+                    snprintf(path, sizeof(path), "%s/ecg_archive", BASE_PATH);
+                    DIR *dir = opendir(path);
+                    if (dir != NULL) {
+                        struct dirent *entry;
+                        while ((entry = readdir(dir)) != NULL) {
+                            snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
+                            if (entry->d_type == DT_DIR) {
+                                if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+                                    ESP_LOGI(TAG, "Menghapus subdirektori: %s", full_path);
+                                    rmdir(full_path); // Hapus subdirektori
+                                }
+                            } else {
+                                ESP_LOGI(TAG, "Menghapus file: %s", full_path);
+                                unlink(full_path); // Hapus file
+                            }
+                        }
+                        closedir(dir);
+                        ESP_LOGI(TAG, "Menghapus folder utama: %s", path);
+                        rmdir(path); // Hapus folder utama setelah isinya kosong
+                        ESP_LOGI(TAG, "Folder %s/ecg_archive berhasil dihapus", BASE_PATH);
+                    } else {
+                        ESP_LOGE(TAG, "Gagal membuka folder %s, errno: %d", path, errno);
+                        // Coba remount untuk memastikan path valid
+                        ESP_ERROR_CHECK(tinyusb_msc_storage_mount(BASE_PATH));
+                        dir = opendir(path);
+                        if (dir != NULL) {
+                            ESP_LOGI(TAG, "Remount berhasil, melanjutkan penghapusan...");
+                            struct dirent *entry;
+                            while ((entry = readdir(dir)) != NULL) {
+                                snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
+                                if (entry->d_type == DT_DIR) {
+                                    if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+                                        ESP_LOGI(TAG, "Menghapus subdirektori: %s", full_path);
+                                        rmdir(full_path);
+                                    }
+                                } else {
+                                    ESP_LOGI(TAG, "Menghapus file: %s", full_path);
+                                    unlink(full_path);
+                                }
+                            }
+                            closedir(dir);
+                            rmdir(path);
+                            ESP_LOGI(TAG, "Folder %s/ecg_archive berhasil dihapus setelah remount", BASE_PATH);
+                        } else {
+                            ESP_LOGE(TAG, "Remount gagal, folder tetap tidak bisa dihapus");
+                        }
+                    }
+
                     ESP_ERROR_CHECK(tinyusb_msc_storage_unmount()); // Unmount (expose) kembali
                     ESP_LOGI(TAG, "Proses upload selesai, kembali ke mode expose");
                 } else {
@@ -608,21 +662,21 @@ void app_main(void)
     // Definisi IP statis (hardcode, bisa dikomentari untuk menggunakan DHCP)
     #define USE_STATIC_IP
     #ifdef USE_STATIC_IP
-    esp_netif_ip_info_t ip_info = {
-        .ip = {
-            .addr = ipaddr_addr("192.168.13.100") // Ganti dengan IP statis yang diinginkan
-        },
-        .netmask = {
-            .addr = ipaddr_addr("255.255.255.0") // Netmask
-        },
-        .gw = {
-            .addr = ipaddr_addr("192.168.13.1")  // Gateway
-        },
-    };
-    esp_netif_dhcpc_stop(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")); // Matikan DHCP
-    esp_netif_set_ip_info(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), &ip_info);
-    ESP_LOGI(TAG, "Menggunakan IP statis: " IPSTR ", Netmask: " IPSTR ", Gateway: " IPSTR,
-             IP2STR(&ip_info.ip), IP2STR(&ip_info.netmask), IP2STR(&ip_info.gw));
+    // esp_netif_ip_info_t ip_info = {
+    //     .ip = {
+    //         .addr = ipaddr_addr("192.168.13.100") // Ganti dengan IP statis yang diinginkan
+    //     },
+    //     .netmask = {
+    //         .addr = ipaddr_addr("255.255.255.0") // Netmask
+    //     },
+    //     .gw = {
+    //         .addr = ipaddr_addr("192.168.13.1")  // Gateway
+    //     },
+    // };
+    // esp_netif_dhcpc_stop(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")); // Matikan DHCP
+    // esp_netif_set_ip_info(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), &ip_info);
+    // ESP_LOGI(TAG, "Menggunakan IP statis: " IPSTR ", Netmask: " IPSTR ", Gateway: " IPSTR,
+    //          IP2STR(&ip_info.ip), IP2STR(&ip_info.netmask), IP2STR(&ip_info.gw));
     #else
     esp_netif_dhcpc_start(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")); // Aktifkan DHCP
     ESP_LOGI(TAG, "Menggunakan IP dinamis (DHCP)");
