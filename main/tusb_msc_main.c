@@ -1,15 +1,3 @@
-/*
- * SPDX-FileCopyrightText: 2022-2024 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: Unlicense OR CC0-1.0
- */
-
-/* DESCRIPTION:
- * This example makes an ESP32-based device recognizable as a USB Mass Storage Device.
- * It supports uploading XML files from storage (SPI Flash or SD card) to a server,
- * checking folders, and managing storage mount/expose operations.
- */
-
 #include <errno.h>
 #include <dirent.h>
 #include <stdlib.h>
@@ -421,7 +409,12 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_DATA:
             ESP_LOGI(TAG, "Menerima pesan di topik %.*s: %.*s", event->topic_len, event->topic, event->data_len, event->data);
             if (event->topic_len == strlen("ecg1200G/upload") && strncmp(event->topic, "ecg1200G/upload", event->topic_len) == 0) {
-                console_upload(0, NULL); // Panggil fungsi upload saat pesan diterima
+                // Cek payload, hanya jalankan jika payload adalah "upload"
+                if (event->data_len == strlen("upload") && strncmp(event->data, "upload", event->data_len) == 0) {
+                    console_upload(0, NULL); // Panggil fungsi upload jika payload "upload"
+                } else {
+                    ESP_LOGW(TAG, "Payload tidak valid, abaikan. Harus 'upload'");
+                }
             }
             break;
         default:
