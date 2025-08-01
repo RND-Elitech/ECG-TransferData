@@ -58,6 +58,7 @@ D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/http_parser/libhttp_parser
 D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esp-tls/libesp-tls.a
 D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/tcp_transport/libtcp_transport.a
 D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esp_http_client/libesp_http_client.a
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/mqtt/libmqtt.a
 D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/espressif__tinyusb/libespressif__tinyusb.a
 D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/usb/libusb.a
 D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/espressif__esp_tinyusb/libespressif__esp_tinyusb.a

@@ -600,6 +600,13 @@ D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esp_http_client/CMakeFiles
 D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esp_http_client/CMakeFiles/install.dir
 D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esp_http_client/CMakeFiles/install/local.dir
 D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/esp_http_client/CMakeFiles/install/strip.dir
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/mqtt/CMakeFiles/__idf_mqtt.dir
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/mqtt/CMakeFiles/edit_cache.dir
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/mqtt/CMakeFiles/rebuild_cache.dir
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/mqtt/CMakeFiles/list_install_components.dir
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/mqtt/CMakeFiles/install.dir
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/mqtt/CMakeFiles/install/local.dir
+D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/mqtt/CMakeFiles/install/strip.dir
 D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/espressif__tinyusb/CMakeFiles/__idf_espressif__tinyusb.dir
 D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/espressif__tinyusb/CMakeFiles/edit_cache.dir
 D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/espressif__tinyusb/CMakeFiles/rebuild_cache.dir

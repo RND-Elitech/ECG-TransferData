@@ -28,6 +28,7 @@
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_netif.h"
+#include "mqtt_client.h"
 #ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SDMMC
 #if CONFIG_EXAMPLE_SD_PWR_CTRL_LDO_INTERNAL_IO
 #include "sd_pwr_ctrl_by_on_chip_ldo.h"
@@ -43,6 +44,7 @@
 
 static const char *TAG = "tusb_msc_main";
 static esp_console_repl_t *repl = NULL;
+static esp_mqtt_client_handle_t mqtt_client = NULL;
 
 /* TinyUSB descriptors */
 #define EPNUM_MSC       1
@@ -402,6 +404,46 @@ static int console_mount(int argc, char **argv)
     return 0;
 }
 
+static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
+{
+    esp_mqtt_event_handle_t event = event_data;
+    switch (event->event_id) {
+        case MQTT_EVENT_CONNECTED:
+            ESP_LOGI(TAG, "Terhubung ke MQTT broker");
+            esp_mqtt_client_subscribe(mqtt_client, "ecg1200G/upload", 0);
+            break;
+        case MQTT_EVENT_DISCONNECTED:
+            ESP_LOGI(TAG, "Terputus dari MQTT broker");
+            break;
+        case MQTT_EVENT_SUBSCRIBED:
+            ESP_LOGI(TAG, "Berhasil subscribe ke topik ecg1200G/upload");
+            break;
+        case MQTT_EVENT_DATA:
+            ESP_LOGI(TAG, "Menerima pesan di topik %.*s: %.*s", event->topic_len, event->topic, event->data_len, event->data);
+            if (event->topic_len == strlen("ecg1200G/upload") && strncmp(event->topic, "ecg1200G/upload", event->topic_len) == 0) {
+                console_upload(0, NULL); // Panggil fungsi upload saat pesan diterima
+            }
+            break;
+        default:
+            ESP_LOGI(TAG, "Event MQTT lainnya: %d", event->event_id);
+            break;
+    }
+}
+
+static void mqtt_app_start(void)
+{
+    esp_mqtt_client_config_t mqtt_cfg = {
+        .broker = {
+            .address.uri = "mqtt://192.168.13.173",
+            .address.port = 1883,
+        },
+    };
+    mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
+    /* Register event handler */
+    esp_mqtt_client_register_event(mqtt_client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
+    esp_mqtt_client_start(mqtt_client);
+}
+
 static void storage_mount_changed_cb(tinyusb_msc_event_t *event)
 {
     ESP_LOGI(TAG, "Storage mounted to application: %s", event->mount_changed_data.is_mounted ? "Yes" : "No");
@@ -573,6 +615,7 @@ void app_main(void)
         esp_netif_ip_info_t ip_info;
         if (esp_netif_get_ip_info(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), &ip_info) == ESP_OK && ip_info.ip.addr != 0) {
             ESP_LOGI(TAG, "Wi-Fi berhasil terhubung");
+            mqtt_app_start();
             break;
         }
         if ((xTaskGetTickCount() - start_time) > pdMS_TO_TICKS(30000)) {
