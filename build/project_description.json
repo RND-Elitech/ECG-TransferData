@@ -1,7 +1,7 @@
 {
     "version":            "1.2",
     "project_name":       "FlashDriveTes",
-    "project_version":    "594144e-dirty",
+    "project_version":    "7a4dbc2-dirty",
     "project_path":       "D:/Dokumen Rivaldi/GIT/ECG TransferData",
     "idf_path":           "C:/Users/RND-5/esp/v5.4.1/esp-idf",
     "build_dir":          "D:/Dokumen Rivaldi/GIT/ECG TransferData/build",
@@ -891,7 +891,7 @@
             "type": "LIBRARY",
             "lib": "__idf_main",
             "reqs": [],
-            "priv_reqs": [ "fatfs", "console", "esp_wifi", "nvs_flash", "esp_event", "esp_http_client", "esp_netif", "espressif__esp_tinyusb" ],
+            "priv_reqs": [ "fatfs", "console", "esp_wifi", "nvs_flash", "esp_event", "esp_http_client", "esp_netif", "esp_timer", "espressif__esp_tinyusb" ],
             "managed_reqs": [],
             "managed_priv_reqs": [ "espressif__esp_tinyusb" ],
             "file": "D:/Dokumen Rivaldi/GIT/ECG TransferData/build/esp-idf/main/libmain.a",
@@ -2377,7 +2377,7 @@
             "dir": "D:/Dokumen Rivaldi/GIT/ECG TransferData/main",
             "lib": "__idf_main",
             "reqs": [],
-            "priv_reqs": [ "fatfs", "console", "esp_wifi", "nvs_flash", "esp_event", "esp_http_client", "esp_netif", "espressif__esp_tinyusb" ],
+            "priv_reqs": [ "fatfs", "console", "esp_wifi", "nvs_flash", "esp_event", "esp_http_client", "esp_netif", "esp_timer", "espressif__esp_tinyusb" ],
             "managed_reqs": [],
             "managed_priv_reqs": [ "espressif__esp_tinyusb" ],
             "include_dirs": [ "." ]

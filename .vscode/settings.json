@@ -29,6 +29,7 @@
     "esp_partition.h": "c",
     "gpio.h": "c",
     "tinyusb.h": "c",
-    "nvs_flash.h": "c"
+    "nvs_flash.h": "c",
+    "esp_timer.h": "c"
   }
 }
