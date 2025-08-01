@@ -599,16 +599,41 @@ void app_main(void)
     };
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+
+    // Definisi IP statis (hardcode, bisa dikomentari untuk menggunakan DHCP)
+    #define USE_STATIC_IP
+    #ifdef USE_STATIC_IP
+    esp_netif_ip_info_t ip_info = {
+        .ip = {
+            .addr = ipaddr_addr("192.168.13.30") // Ganti dengan IP statis yang diinginkan
+        },
+        .netmask = {
+            .addr = ipaddr_addr("255.255.252.0") // Netmask
+        },
+        .gw = {
+            .addr = ipaddr_addr("192.168.13.1")  // Gateway
+        },
+    };
+    esp_netif_dhcpc_stop(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")); // Matikan DHCP
+    esp_netif_set_ip_info(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), &ip_info);
+    ESP_LOGI(TAG, "Menggunakan IP statis: " IPSTR ", Netmask: " IPSTR ", Gateway: " IPSTR,
+             IP2STR(&ip_info.ip), IP2STR(&ip_info.netmask), IP2STR(&ip_info.gw));
+    #else
+    esp_netif_dhcpc_start(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")); // Aktifkan DHCP
+    ESP_LOGI(TAG, "Menggunakan IP dinamis (DHCP)");
+    #endif
+
     ESP_ERROR_CHECK(esp_wifi_start());
 
     ESP_LOGI(TAG, "Menunggu koneksi Wi-Fi...");
     // Tunggu hingga terhubung (timeout 30 detik)
     TickType_t start_time = xTaskGetTickCount();
     while (true) {
-        esp_netif_ip_info_t ip_info;
-        if (esp_netif_get_ip_info(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), &ip_info) == ESP_OK && ip_info.ip.addr != 0) {
-            ESP_LOGI(TAG, "Wi-Fi berhasil terhubung");
-            mqtt_app_start();
+        esp_netif_ip_info_t ip_info_check;
+        if (esp_netif_get_ip_info(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), &ip_info_check) == ESP_OK &&
+            ip_info_check.ip.addr != 0) {
+            ESP_LOGI(TAG, "Wi-Fi berhasil terhubung, IP: " IPSTR, IP2STR(&ip_info_check.ip));
+            mqtt_app_start(); // Mulai MQTT setelah Wi-Fi terhubung
             break;
         }
         if ((xTaskGetTickCount() - start_time) > pdMS_TO_TICKS(30000)) {
