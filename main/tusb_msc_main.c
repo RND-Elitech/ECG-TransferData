@@ -239,11 +239,21 @@ static int console_upload(int argc, char **argv)
         return -1;
     }
 
-    // Konfigurasi HTTP client
+    // Cek konektivitas ke server sebelum memulai upload
+    esp_netif_ip_info_t ip_info;
+    if (esp_netif_get_ip_info(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), &ip_info) != ESP_OK ||
+        ip_info.ip.addr == 0) {
+        ESP_LOGE(TAG, "Tidak ada koneksi IP, periksa Wi-Fi!");
+        fclose(fp);
+        return -1;
+    }
+    ESP_LOGI(TAG, "IP lokal: " IPSTR, IP2STR(&ip_info.ip));
+
+    // Konfigurasi HTTP client untuk multipart/form-data
     esp_http_client_config_t config = {
-        .url = "http://192.168.13.145/upload.php",
+        .url = "http://192.168.13.190:3000/api/ecg1200g/upload",
         .method = HTTP_METHOD_POST,
-        .timeout_ms = 30000,
+        .timeout_ms = 60000, // Tingkatkan timeout dari 30000 ke 60000 ms (60 detik)
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (!client) {
@@ -252,11 +262,14 @@ static int console_upload(int argc, char **argv)
         return -1;
     }
 
-    // Set header
-    esp_http_client_set_header(client, "Content-Type", "application/xml");
+    // Set header multipart/form-data
+    const char *boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW";
+    char content_type[128];
+    snprintf(content_type, sizeof(content_type), "multipart/form-data; boundary=%s", boundary);
+    esp_http_client_set_header(client, "Content-Type", content_type);
 
-    // Buka koneksi dengan ukuran diketahui
-    esp_err_t err = esp_http_client_open(client, file_size);
+    // Buka koneksi
+    esp_err_t err = esp_http_client_open(client, file_size + 512);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Gagal membuka HTTP: %s", esp_err_to_name(err));
         esp_http_client_cleanup(client);
@@ -264,9 +277,16 @@ static int console_upload(int argc, char **argv)
         return -1;
     }
 
-    ESP_LOGI(TAG, "Mengunggah file: %s (%d bytes) dari folder: %s", xml_file, file_size, latest_folder);
+    // Tulis header multipart
+    char header[512];
+    snprintf(header, sizeof(header),
+             "--%s\r\n"
+             "Content-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\n"
+             "Content-Type: application/xml\r\n\r\n",
+             boundary, xml_file);
+    esp_http_client_write(client, header, strlen(header));
 
-    // Kirim per chunk
+    // Kirim isi file
     uint8_t buffer[1024];
     int read_bytes;
     while ((read_bytes = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
@@ -279,6 +299,11 @@ static int console_upload(int argc, char **argv)
         }
     }
     fclose(fp);
+
+    // Tulis footer multipart
+    char footer[128];
+    snprintf(footer, sizeof(footer), "\r\n--%s--\r\n", boundary);
+    esp_http_client_write(client, footer, strlen(footer));
 
     // Dapatkan respons
     esp_err_t perform_err = esp_http_client_perform(client);
@@ -605,7 +630,7 @@ void app_main(void)
     #ifdef USE_STATIC_IP
     esp_netif_ip_info_t ip_info = {
         .ip = {
-            .addr = ipaddr_addr("192.168.13.30") // Ganti dengan IP statis yang diinginkan
+            .addr = ipaddr_addr("192.168.13.37") // Ganti dengan IP statis yang diinginkan
         },
         .netmask = {
             .addr = ipaddr_addr("255.255.252.0") // Netmask
@@ -632,7 +657,12 @@ void app_main(void)
         esp_netif_ip_info_t ip_info_check;
         if (esp_netif_get_ip_info(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), &ip_info_check) == ESP_OK &&
             ip_info_check.ip.addr != 0) {
+            #ifdef USE_STATIC_IP
             ESP_LOGI(TAG, "Wi-Fi berhasil terhubung, IP: " IPSTR, IP2STR(&ip_info_check.ip));
+            #else
+            ESP_LOGI(TAG, "Wi-Fi berhasil terhubung, IP: " IPSTR ", Netmask: " IPSTR ", Gateway: " IPSTR,
+                     IP2STR(&ip_info_check.ip), IP2STR(&ip_info_check.netmask), IP2STR(&ip_info_check.gw));
+            #endif
             mqtt_app_start(); // Mulai MQTT setelah Wi-Fi terhubung
             break;
         }
@@ -643,8 +673,7 @@ void app_main(void)
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
-    ESP_LOGI(TAG, "Ping ke server 192.168.13.145...");
-    system("ping 192.168.13.145");
+    ESP_LOGI(TAG, "Ping ke server: %s", system("ping -c 4 192.168.13.190") == 0 ? "Sukses" : "Gagal");
 
     ESP_LOGI(TAG, "Initializing storage...");
 
