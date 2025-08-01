@@ -404,14 +404,19 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             ESP_LOGI(TAG, "Terputus dari MQTT broker");
             break;
         case MQTT_EVENT_SUBSCRIBED:
-            ESP_LOGI(TAG, "Berhasil subscribe ke topik ecg1200G/upload");
+            ESP_LOGI(TAG, "Berhasil subscribe ke topik %.*s", event->topic_len, event->topic);
             break;
         case MQTT_EVENT_DATA:
             ESP_LOGI(TAG, "Menerima pesan di topik %.*s: %.*s", event->topic_len, event->topic, event->data_len, event->data);
             if (event->topic_len == strlen("ecg1200G/upload") && strncmp(event->topic, "ecg1200G/upload", event->topic_len) == 0) {
-                // Cek payload, hanya jalankan jika payload adalah "upload"
+                // Trigger upload
                 if (event->data_len == strlen("upload") && strncmp(event->data, "upload", event->data_len) == 0) {
-                    console_upload(0, NULL); // Panggil fungsi upload jika payload "upload"
+                    ESP_LOGI(TAG, "Menerima perintah upload, memulai proses...");
+                    ESP_ERROR_CHECK(tinyusb_msc_storage_mount(BASE_PATH)); // Mount storage langsung
+                    console_upload(0, NULL); // Jalankan upload
+                    vTaskDelay(pdMS_TO_TICKS(1000)); // Tunggu proses selesai
+                    ESP_ERROR_CHECK(tinyusb_msc_storage_unmount()); // Unmount (expose) kembali
+                    ESP_LOGI(TAG, "Proses upload selesai, kembali ke mode expose");
                 } else {
                     ESP_LOGW(TAG, "Payload tidak valid, abaikan. Harus 'upload'");
                 }
@@ -605,10 +610,10 @@ void app_main(void)
     #ifdef USE_STATIC_IP
     esp_netif_ip_info_t ip_info = {
         .ip = {
-            .addr = ipaddr_addr("192.168.13.30") // Ganti dengan IP statis yang diinginkan
+            .addr = ipaddr_addr("192.168.13.100") // Ganti dengan IP statis yang diinginkan
         },
         .netmask = {
-            .addr = ipaddr_addr("255.255.252.0") // Netmask
+            .addr = ipaddr_addr("255.255.255.0") // Netmask
         },
         .gw = {
             .addr = ipaddr_addr("192.168.13.1")  // Gateway
@@ -632,7 +637,12 @@ void app_main(void)
         esp_netif_ip_info_t ip_info_check;
         if (esp_netif_get_ip_info(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), &ip_info_check) == ESP_OK &&
             ip_info_check.ip.addr != 0) {
+            #ifdef USE_STATIC_IP
             ESP_LOGI(TAG, "Wi-Fi berhasil terhubung, IP: " IPSTR, IP2STR(&ip_info_check.ip));
+            #else
+            ESP_LOGI(TAG, "Wi-Fi berhasil terhubung, IP: " IPSTR ", Netmask: " IPSTR ", Gateway: " IPSTR,
+                     IP2STR(&ip_info_check.ip), IP2STR(&ip_info_check.netmask), IP2STR(&ip_info_check.gw));
+            #endif
             mqtt_app_start(); // Mulai MQTT setelah Wi-Fi terhubung
             break;
         }
@@ -647,7 +657,6 @@ void app_main(void)
     system("ping 192.168.13.145");
 
     ESP_LOGI(TAG, "Initializing storage...");
-
 #ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
     static wl_handle_t wl_handle = WL_INVALID_HANDLE;
     ESP_ERROR_CHECK(storage_init_spiflash(&wl_handle));
@@ -669,8 +678,11 @@ void app_main(void)
 #endif
     ESP_ERROR_CHECK(tinyusb_msc_register_callback(TINYUSB_MSC_EVENT_MOUNT_CHANGED, storage_mount_changed_cb));
 
-    // Mount storage
+    // Mount storage (akan di-unmount kembali di bawah)
     _mount();
+    // Pindahkan unmount setelah inisialisasi TinyUSB
+    ESP_LOGI(TAG, "Mengatur mode default expose...");
+    ESP_ERROR_CHECK(tinyusb_msc_storage_unmount());
 
     ESP_LOGI(TAG, "USB MSC initialization");
     const tinyusb_config_t tusb_cfg = {
