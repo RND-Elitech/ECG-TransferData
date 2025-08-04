@@ -1,7 +1,7 @@
 {
     "version":            "1.2",
     "project_name":       "FlashDriveTes",
-    "project_version":    "c2441a6-dirty",
+    "project_version":    "798d079-dirty",
     "project_path":       "D:/Dokumen Rivaldi/GIT/ECG TransferData",
     "idf_path":           "C:/Users/RND-5/esp/v5.4.1/esp-idf",
     "build_dir":          "D:/Dokumen Rivaldi/GIT/ECG TransferData/build",
