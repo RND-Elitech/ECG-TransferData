@@ -359,7 +359,6 @@ static int console_upload(int argc, char **argv)
             ESP_LOGI(TAG, "Tidak ada body respons dari server (Content-Length: 0)");
         }
     } else {
-        ESP_LOGE(TAG, "Upload gagal, status: %d", status);
         if (response_content_length > 0) {
             char *response_buffer = malloc(response_content_length + 1);
             if (response_buffer) {
