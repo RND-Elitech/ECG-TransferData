@@ -221,7 +221,7 @@ static int console_upload(int argc, char **argv)
     char file_path[768];
     snprintf(file_path, sizeof(file_path), "%s/%s", folder_path, xml_file);
 
-    FILE *fp = fopen(file_path, "r");
+    FILE *fp = fopen(file_path, "rb");
     if (!fp) {
         ESP_LOGE(TAG, "Gagal membuka file: %s", file_path);
         return -1;
@@ -230,7 +230,7 @@ static int console_upload(int argc, char **argv)
     // Dapatkan ukuran file
     fseek(fp, 0, SEEK_END);
     size_t file_size = ftell(fp);
-    rewind(fp);
+    fseek(fp, 0, SEEK_SET);
 
     // Validasi ukuran file
     if (file_size < 10) {
@@ -239,11 +239,28 @@ static int console_upload(int argc, char **argv)
         return -1;
     }
 
+    // Boundary untuk multipart
+    const char *boundary = "----ESP32FormBoundary123456";
+
+    // Susun header multipart
+    char multipart_header[512];
+    snprintf(multipart_header, sizeof(multipart_header),
+             "--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\nContent-Type: application/xml\r\n\r\n",
+             boundary, xml_file);
+
+    // Susun footer multipart
+    char multipart_footer[64]; // Diperbesar dari 32 ke 64 untuk menampung string lengkap
+    snprintf(multipart_footer, sizeof(multipart_footer), "\r\n--%s--\r\n", boundary);
+
+    // Total panjang konten untuk multipart
+    size_t total_content_length = strlen(multipart_header) + file_size + strlen(multipart_footer);
+
     // Konfigurasi HTTP client
     esp_http_client_config_t config = {
-        .url = "http://192.168.13.145/upload.php",
+        .url = "http://192.168.13.156:3000/api/ecg1200g/upload",
         .method = HTTP_METHOD_POST,
         .timeout_ms = 30000,
+        .buffer_size = 2048,
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (!client) {
@@ -252,11 +269,13 @@ static int console_upload(int argc, char **argv)
         return -1;
     }
 
-    // Set header
-    esp_http_client_set_header(client, "Content-Type", "application/xml");
+    // Set header Content-Type
+    char content_type[128];
+    snprintf(content_type, sizeof(content_type), "multipart/form-data; boundary=%s", boundary);
+    esp_http_client_set_header(client, "Content-Type", content_type);
 
     // Buka koneksi dengan ukuran diketahui
-    esp_err_t err = esp_http_client_open(client, file_size);
+    esp_err_t err = esp_http_client_open(client, total_content_length);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Gagal membuka HTTP: %s", esp_err_to_name(err));
         esp_http_client_cleanup(client);
@@ -266,36 +285,103 @@ static int console_upload(int argc, char **argv)
 
     ESP_LOGI(TAG, "Mengunggah file: %s (%d bytes) dari folder: %s", xml_file, file_size, latest_folder);
 
-    // Kirim per chunk
-    uint8_t buffer[1024];
-    int read_bytes;
-    while ((read_bytes = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
-        int written = esp_http_client_write(client, (char*)buffer, read_bytes);
-        if (written != read_bytes) {
-            ESP_LOGE(TAG, "Hanya tertulis %d dari %d byte", written, read_bytes);
-            fclose(fp);
-            esp_http_client_cleanup(client);
-            return -1;
-        }
-    }
-    fclose(fp);
-
-    // Dapatkan respons
-    esp_err_t perform_err = esp_http_client_perform(client);
-    if (perform_err != ESP_OK) {
-        ESP_LOGE(TAG, "Upload gagal: %s", esp_err_to_name(perform_err));
+    // Kirim header multipart
+    if (esp_http_client_write(client, multipart_header, strlen(multipart_header)) < 0) {
+        ESP_LOGE(TAG, "Gagal menulis header multipart");
+        esp_http_client_close(client);
         esp_http_client_cleanup(client);
+        fclose(fp);
         return -1;
     }
 
-    int status = esp_http_client_get_status_code(client);
-    if (status == 200) {
-        ESP_LOGI(TAG, "Upload berhasil!");
-    } else {
-        ESP_LOGE(TAG, "Upload gagal, status: %d", status);
+    // Kirim isi file
+    uint8_t buffer[1024];
+    size_t total_read = 0;
+    while (total_read < file_size) {
+        size_t to_read = file_size - total_read < sizeof(buffer) ? file_size - total_read : sizeof(buffer);
+        size_t read_bytes = fread(buffer, 1, to_read, fp);
+        if (read_bytes <= 0) {
+            ESP_LOGE(TAG, "Gagal membaca file");
+            esp_http_client_close(client);
+            esp_http_client_cleanup(client);
+            fclose(fp);
+            return -1;
+        }
+        if (esp_http_client_write(client, (char *)buffer, read_bytes) < 0) {
+            ESP_LOGE(TAG, "Gagal menulis data file");
+            esp_http_client_close(client);
+            esp_http_client_cleanup(client);
+            fclose(fp);
+            return -1;
+        }
+        total_read += read_bytes;
     }
 
+    // Kirim footer multipart
+    if (esp_http_client_write(client, multipart_footer, strlen(multipart_footer)) < 0) {
+        ESP_LOGE(TAG, "Gagal menulis footer multipart");
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        fclose(fp);
+        return -1;
+    }
+
+    // Dapatkan respons
+    int status = esp_http_client_fetch_headers(client);
+    if (status < 0) {
+        ESP_LOGE(TAG, "Gagal mengambil header respons");
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        fclose(fp);
+        return -1;
+    }
+
+    int response_content_length = esp_http_client_get_content_length(client);
+    ESP_LOGI(TAG, "Status HTTP: %d, Content-Length: %d", status, response_content_length);
+
+    if (status == 200) {
+        ESP_LOGI(TAG, "Upload berhasil!");
+        if (response_content_length > 0) {
+            char *response_buffer = malloc(response_content_length + 1);
+            if (response_buffer) {
+                int read_len = esp_http_client_read_response(client, response_buffer, response_content_length);
+                if (read_len > 0) {
+                    response_buffer[read_len] = '\0';
+                    ESP_LOGI(TAG, "Respons dari server: %s", response_buffer);
+                } else {
+                    ESP_LOGE(TAG, "Gagal membaca respons dari server, read_len: %d", read_len);
+                }
+                free(response_buffer);
+            } else {
+                ESP_LOGE(TAG, "Gagal alokasi memori untuk response_buffer");
+            }
+        } else {
+            ESP_LOGI(TAG, "Tidak ada body respons dari server (Content-Length: 0)");
+        }
+    } else {
+        ESP_LOGE(TAG, "Upload gagal, status: %d", status);
+        if (response_content_length > 0) {
+            char *response_buffer = malloc(response_content_length + 1);
+            if (response_buffer) {
+                int read_len = esp_http_client_read_response(client, response_buffer, response_content_length);
+                if (read_len > 0) {
+                    response_buffer[read_len] = '\0';
+                    ESP_LOGI(TAG, "Respons dari server: %s", response_buffer);
+                } else {
+                    ESP_LOGE(TAG, "Gagal membaca respons dari server, read_len: %d", read_len);
+                }
+                free(response_buffer);
+            } else {
+                ESP_LOGE(TAG, "Gagal alokasi memori untuk response_buffer");
+            }
+        } else {
+            ESP_LOGI(TAG, "Tidak ada body respons dari server (Content-Length: 0)");
+        }
+    }
+
+    esp_http_client_close(client);
     esp_http_client_cleanup(client);
+    fclose(fp);
     return (status == 200) ? 0 : -1;
 }
 
@@ -488,6 +574,10 @@ static void mqtt_app_start(void)
         .broker = {
             .address.uri = "mqtt://192.168.13.173",
             .address.port = 1883,
+        },
+        .task = {
+            .stack_size = 10240, // Tingkatkan ukuran stack ke 10KB
+            .priority = 5,       // Prioritas default
         },
     };
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);

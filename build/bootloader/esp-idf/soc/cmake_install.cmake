@@ -1,4 +1,4 @@
-# Install script for directory: C:/Users/RND-5/esp/v5.4.1/esp-idf/components/soc
+# Install script for directory: C:/Users/RND-5/esp/v5.5/esp-idf/components/soc
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)

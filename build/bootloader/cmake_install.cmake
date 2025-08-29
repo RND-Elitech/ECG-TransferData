@@ -1,4 +1,4 @@
-# Install script for directory: C:/Users/RND-5/esp/v5.4.1/esp-idf/components/bootloader/subproject
+# Install script for directory: C:/Users/RND-5/esp/v5.5/esp-idf/components/bootloader/subproject
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -39,7 +39,7 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/esp-idf/cmake_install.cmake")
+  include("D:/Dokumen Rivaldi/ECG1200G/VsCode/clone/ECG-TransferData/ECG-TransferData/build/bootloader/esp-idf/cmake_install.cmake")
 endif()
 
 if(CMAKE_INSTALL_COMPONENT)
@@ -57,6 +57,6 @@ endif()
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-  file(WRITE "D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/${CMAKE_INSTALL_MANIFEST}"
+  file(WRITE "D:/Dokumen Rivaldi/ECG1200G/VsCode/clone/ECG-TransferData/ECG-TransferData/build/bootloader/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()

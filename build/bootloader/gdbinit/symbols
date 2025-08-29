@@ -17,4 +17,4 @@ set confirm off
 set confirm on
 
 # Load application symbols
-file D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.elf
+file D:/Dokumen Rivaldi/ECG1200G/VsCode/clone/ECG-TransferData/ECG-TransferData/build/bootloader/bootloader.elf

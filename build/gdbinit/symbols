@@ -13,8 +13,8 @@ end
 
 # Load bootloader symbols
 set confirm off
-    add-symbol-file D:/Dokumen Rivaldi/GIT/ECG TransferData/build/bootloader/bootloader.elf
+    add-symbol-file D:/Dokumen Rivaldi/ECG1200G/VsCode/clone/ECG-TransferData/ECG-TransferData/build/bootloader/bootloader.elf
 set confirm on
 
 # Load application symbols
-file D:/Dokumen Rivaldi/GIT/ECG TransferData/build/FlashDriveTes.elf
+file D:/Dokumen Rivaldi/ECG1200G/VsCode/clone/ECG-TransferData/ECG-TransferData/build/FlashDriveTes.elf

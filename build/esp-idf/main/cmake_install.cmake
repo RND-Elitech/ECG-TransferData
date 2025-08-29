@@ -1,4 +1,4 @@
-# Install script for directory: D:/Dokumen Rivaldi/GIT/ECG TransferData/main
+# Install script for directory: D:/Dokumen Rivaldi/ECG1200G/VsCode/clone/ECG-TransferData/ECG-TransferData/main
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
