@@ -17,6 +17,7 @@
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "mqtt_client.h"
+#include "esp_crt_bundle.h"
 #ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SDMMC
 #if CONFIG_EXAMPLE_SD_PWR_CTRL_LDO_INTERNAL_IO
 #include "sd_pwr_ctrl_by_on_chip_ldo.h"
@@ -573,6 +574,7 @@ static void mqtt_app_start(void)
         .broker = {
             .address.uri = "mqtts://dev.samelement.com",
             .address.port = 8883,
+            .verification.crt_bundle_attach = esp_crt_bundle_attach,
         },
         .credentials = {
             .username = "iotgateway",

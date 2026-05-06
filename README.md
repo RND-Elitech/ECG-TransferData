@@ -43,6 +43,36 @@ Anda dapat berinteraksi dengan perangkat melalui terminal serial menggunakan per
 
 ---
 
+## Panduan Penggunaan
+
+### 1. Koneksi Hardware
+*   Hubungkan ESP32 ke komputer atau mesin EKG melalui port USB (OTG).
+*   ESP32 akan terdeteksi sebagai **USB Mass Storage** (seperti Flash Drive) dengan nama "Example MSC".
+
+### 2. Pengiriman Data (Upload)
+Ada dua cara untuk memicu pengiriman data dari perangkat ke server:
+
+#### A. Melalui MQTT (Otomatis/Jarak Jauh)
+Kirim pesan teks (payload) ke topik berikut menggunakan aplikasi MQTT client (seperti MQTT Explorer):
+*   **Topic**: `ecg1200G/upload`
+*   **Payload**: `upload`
+
+**Efek**: ESP32 akan otomatis memutus koneksi USB ke PC/EKG (unmount), mencari folder `ecg_archive` terbaru, mencari file `.XML` di dalamnya, mengunggahnya ke server, menghapus folder tersebut setelah berhasil, dan menyambungkan kembali koneksi USB.
+
+#### B. Melalui Konsol Serial (Manual)
+1.  Buka terminal serial (misal: Monitor di VS Code atau Putty) dengan baudrate **115200**.
+2.  Ketik perintah:
+    ```bash
+    upload
+    ```
+3.  Gunakan perintah `check` untuk melihat daftar folder dan file yang ada di penyimpanan.
+
+### 3. Struktur Folder di Drive USB
+Agar sistem otomatis mengenali file, pastikan struktur folder di dalam drive USB adalah sebagai berikut:
+`D: (Drive ESP32) / ecg_archive / [file_data].XML`
+
+---
+
 ## Konfigurasi Teknis
 *   **Base Path**: `/data`
 *   **Server Target**: `192.168.13.156` (Port 3000)
@@ -53,4 +83,5 @@ Anda dapat berinteraksi dengan perangkat melalui terminal serial menggunakan per
 
 ## Persyaratan Perangkat Keras
 *   ESP32-S2 atau ESP32-S3 (memiliki dukungan USB OTG).
-*   Slot SD Card atau Flash eksternal (tergantung konfigurasi `sdkconfig`).
+*   Slot SD Card atau Flash eksternal.
+
