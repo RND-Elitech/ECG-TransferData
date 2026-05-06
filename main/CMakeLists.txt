@@ -7,5 +7,5 @@ endif()
 idf_component_register(
     SRCS "tusb_msc_main.c"
     INCLUDE_DIRS .
-    PRIV_REQUIRES "${priv_requires}"
+    PRIV_REQUIRES "${priv_requires}" "esp_wifi" "nvs_flash" "esp_event" "esp_http_client"  "esp_netif" "esp_timer" "mqtt"
 )

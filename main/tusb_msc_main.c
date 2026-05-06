@@ -1,21 +1,7 @@
-/*
- * SPDX-FileCopyrightText: 2022-2024 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: Unlicense OR CC0-1.0
- */
-
-/* DESCRIPTION:
- * This example makes an ESP32-based device recognizable as a USB Mass Storage Device.
- * It reads an XML file from the storage (SPI Flash or SD card), parses patient information,
- * and displays it on the serial console. The storage can be accessed by either the embedded
- * application or the USB host, but not both simultaneously.
- */
-
 #include <errno.h>
 #include <dirent.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 #include "sdkconfig.h"
 #include "esp_console.h"
 #include "esp_check.h"
@@ -23,9 +9,15 @@
 #include "driver/gpio.h"
 #include "tinyusb.h"
 #include "tusb_msc_storage.h"
-#ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SDMMC
+#include "esp_http_client.h"
 #include "diskio_impl.h"
 #include "diskio_sdmmc.h"
+#include "nvs_flash.h"
+#include "esp_wifi.h"
+#include "esp_event.h"
+#include "esp_netif.h"
+#include "mqtt_client.h"
+#ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SDMMC
 #if CONFIG_EXAMPLE_SD_PWR_CTRL_LDO_INTERNAL_IO
 #include "sd_pwr_ctrl_by_on_chip_ldo.h"
 #endif
@@ -38,8 +30,9 @@
 #endif
 #endif
 
-static const char *TAG = "example_main";
+static const char *TAG = "tusb_msc_main";
 static esp_console_repl_t *repl = NULL;
+static esp_mqtt_client_handle_t mqtt_client = NULL;
 
 /* TinyUSB descriptors */
 #define EPNUM_MSC       1
@@ -109,48 +102,25 @@ static char const *string_desc_arr[] = {
 #define BASE_PATH "/data" // Base path to mount the partition
 #define PROMPT_STR CONFIG_IDF_TARGET
 
-/* Patient information structure */
-typedef struct {
-    char name[64];
-    char sex[16];
-    char age[16];
-    char sickroomid[16];
-    char bedid[16];
-    char inhospitalid[32];
-    char cop[32];
-    char hr[16];              // Heart Rate
-    char birth_time[32];
-    char effective_time_low[32];
-    char effective_time_high[32];
-    char caseid[32];
-    char filter[16];
-    char uniquecode[64];
-    char pr_interval[16];     // PR Interval
-    char p_duration[16];      // P Duration
-    char qrs_duration[16];    // QRS Duration
-    char t_duration[16];      // T Duration (new)
-    char qt_interval[16];     // QT Interval
-    char qtc_interval[16];    // QTc Interval
-    char p_axis[16];          // P Axis
-    char qrs_axis[16];        // QRS Axis
-    char t_axis[16];          // T Axis
-    char r_v5[16];            // R in V5
-    char s_v1[16];            // S in V1
-    char interpretation[256]; // ECG Interpretation Statement
-} patient_info_t;
-
 /* Function prototypes */
 static int console_unmount(int argc, char **argv);
-static int console_read(int argc, char **argv);
-static int console_write(int argc, char **argv);
 static int console_size(int argc, char **argv);
 static int console_status(int argc, char **argv);
-static int console_exit(int argc, char **argv);
-static void parse_xml_file(const char *filename, patient_info_t *info);
 static int console_check(int argc, char **argv);
-static int console_read_file(int argc, char **argv);
+static int console_upload(int argc, char **argv);
+static int console_mount(int argc, char **argv);
+static void storage_mount_changed_cb(tinyusb_msc_event_t *event);
+static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
+static void _mount(void); // Ditambahkan untuk mengatasi implicit declaration
 
+/* Command structure */
 const esp_console_cmd_t cmds[] = {
+    {
+        .command = "upload",
+        .help = "Unggah file XML dari folder ecg_archive secara otomatis",
+        .hint = NULL, // Hint dihapus karena tidak perlu argumen
+        .func = &console_upload,
+    },
     {
         .command = "check",
         .help = "List folders matching ecg_archive in /data and their XML files",
@@ -158,28 +128,16 @@ const esp_console_cmd_t cmds[] = {
         .func = &console_check,
     },
     {
-        .command = "read_file",
-        .help = "Read and parse XML file from specified folder (e.g., read_file ecg_archive data.XML)",
-        .hint = "<folder_name> <file_name>",
-        .func = &console_read_file,
-    },
-    {
-        .command = "read",
-        .help = "Read and parse XML file in latest ecg_archive folder",
-        .hint = NULL,
-        .func = &console_read,
-    },
-    {
-        .command = "write",
-        .help = "Create file BASE_PATH/README.MD if it does not exist",
-        .hint = NULL,
-        .func = &console_write,
-    },
-    {
         .command = "size",
         .help = "Show storage size and sector size",
         .hint = NULL,
         .func = &console_size,
+    },
+    {
+        .command = "mount",
+        .help = "Mount storage to application",
+        .hint = NULL,
+        .func = &console_mount,
     },
     {
         .command = "expose",
@@ -192,35 +150,238 @@ const esp_console_cmd_t cmds[] = {
         .help = "Status of storage exposure over USB",
         .hint = NULL,
         .func = &console_status,
-    },
-    {
-        .command = "exit",
-        .help = "Exit from application",
-        .hint = NULL,
-        .func = &console_exit,
     }
 };
 
-static void _mount(void)
+static int console_upload(int argc, char **argv)
 {
-    ESP_LOGI(TAG, "Mount storage...");
-    ESP_ERROR_CHECK(tinyusb_msc_storage_mount(BASE_PATH));
+    if (tinyusb_msc_storage_in_use_by_usb_host()) {
+        ESP_LOGE(TAG, "Storage sedang digunakan oleh host USB. Tidak bisa mengunggah file.");
+        return -1;
+    }
 
-    ESP_LOGI(TAG, "\nls command output:");
-    struct dirent *d;
-    DIR *dh = opendir(BASE_PATH);
-    if (!dh) {
-        if (errno == ENOENT) {
-            ESP_LOGE(TAG, "Directory doesn't exist %s", BASE_PATH);
-        } else {
-            ESP_LOGE(TAG, "Unable to read directory %s", BASE_PATH);
+    // Cari folder ecg_archive
+    DIR *dir = opendir(BASE_PATH);
+    if (!dir) {
+        ESP_LOGE(TAG, "Gagal membuka direktori %s", BASE_PATH);
+        return -1;
+    }
+
+    struct dirent *entry;
+    char latest_folder[256] = "";
+    int max_index = -1;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type == DT_DIR && strncmp(entry->d_name, "ecg_archive", 11) == 0) {
+            if (strcmp(entry->d_name, "ecg_archive") == 0) {
+                if (max_index < 0) {
+                    strcpy(latest_folder, entry->d_name);
+                    max_index = 0;
+                }
+            } else {
+                int index = atoi(entry->d_name + 11); // Lewati "ecg_archive_"
+                if (index > max_index) {
+                    max_index = index;
+                    strcpy(latest_folder, entry->d_name);
+                }
+            }
         }
-        return;
     }
-    while ((d = readdir(dh)) != NULL) {
-        printf("%s\n", d->d_name);
+    closedir(dir);
+
+    if (max_index == -1 && strlen(latest_folder) == 0) {
+        ESP_LOGE(TAG, "Tidak ditemukan folder ecg_archive di %s", BASE_PATH);
+        return -1;
     }
-    closedir(dh);
+
+    // Cari file XML di folder terbaru
+    char folder_path[512];
+    snprintf(folder_path, sizeof(folder_path), "%s/%s", BASE_PATH, latest_folder);
+    DIR *subdir = opendir(folder_path);
+    if (!subdir) {
+        ESP_LOGE(TAG, "Gagal membuka folder %s", folder_path);
+        return -1;
+    }
+
+    char xml_file[256] = "";
+    while ((entry = readdir(subdir)) != NULL) {
+        if (entry->d_type == DT_REG && strstr(entry->d_name, ".XML")) {
+            strcpy(xml_file, entry->d_name);
+            break; // Ambil file XML pertama
+        }
+    }
+    closedir(subdir);
+
+    if (strlen(xml_file) == 0) {
+        ESP_LOGE(TAG, "Tidak ditemukan file XML di %s", folder_path);
+        return -1;
+    }
+
+    // Cek file
+    char file_path[768];
+    snprintf(file_path, sizeof(file_path), "%s/%s", folder_path, xml_file);
+
+    FILE *fp = fopen(file_path, "rb");
+    if (!fp) {
+        ESP_LOGE(TAG, "Gagal membuka file: %s", file_path);
+        return -1;
+    }
+
+    // Dapatkan ukuran file
+    fseek(fp, 0, SEEK_END);
+    size_t file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    // Validasi ukuran file
+    if (file_size < 10) {
+        ESP_LOGE(TAG, "File terlalu kecil: %s", file_path);
+        fclose(fp);
+        return -1;
+    }
+
+    // Boundary untuk multipart
+    const char *boundary = "----ESP32FormBoundary123456";
+
+    // Susun header multipart
+    char multipart_header[512];
+    snprintf(multipart_header, sizeof(multipart_header),
+             "--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\nContent-Type: application/xml\r\n\r\n",
+             boundary, xml_file);
+
+    // Susun footer multipart
+    char multipart_footer[64]; // Diperbesar dari 32 ke 64 untuk menampung string lengkap
+    snprintf(multipart_footer, sizeof(multipart_footer), "\r\n--%s--\r\n", boundary);
+
+    // Total panjang konten untuk multipart
+    size_t total_content_length = strlen(multipart_header) + file_size + strlen(multipart_footer);
+
+    // Konfigurasi HTTP client
+    esp_http_client_config_t config = {
+        .url = "http://192.168.13.156:3000/api/ecg-1200g/upload",
+        .method = HTTP_METHOD_POST,
+        .timeout_ms = 30000,
+        .buffer_size = 2048,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (!client) {
+        ESP_LOGE(TAG, "Gagal inisialisasi HTTP client");
+        fclose(fp);
+        return -1;
+    }
+
+    // Set header Content-Type
+    char content_type[128];
+    snprintf(content_type, sizeof(content_type), "multipart/form-data; boundary=%s", boundary);
+    esp_http_client_set_header(client, "Content-Type", content_type);
+
+    // Buka koneksi dengan ukuran diketahui
+    esp_err_t err = esp_http_client_open(client, total_content_length);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Gagal membuka HTTP: %s", esp_err_to_name(err));
+        esp_http_client_cleanup(client);
+        fclose(fp);
+        return -1;
+    }
+
+    ESP_LOGI(TAG, "Mengunggah file: %s (%d bytes) dari folder: %s", xml_file, file_size, latest_folder);
+
+    // Kirim header multipart
+    if (esp_http_client_write(client, multipart_header, strlen(multipart_header)) < 0) {
+        ESP_LOGE(TAG, "Gagal menulis header multipart");
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        fclose(fp);
+        return -1;
+    }
+
+    // Kirim isi file
+    uint8_t buffer[1024];
+    size_t total_read = 0;
+    while (total_read < file_size) {
+        size_t to_read = file_size - total_read < sizeof(buffer) ? file_size - total_read : sizeof(buffer);
+        size_t read_bytes = fread(buffer, 1, to_read, fp);
+        if (read_bytes <= 0) {
+            ESP_LOGE(TAG, "Gagal membaca file");
+            esp_http_client_close(client);
+            esp_http_client_cleanup(client);
+            fclose(fp);
+            return -1;
+        }
+        if (esp_http_client_write(client, (char *)buffer, read_bytes) < 0) {
+            ESP_LOGE(TAG, "Gagal menulis data file");
+            esp_http_client_close(client);
+            esp_http_client_cleanup(client);
+            fclose(fp);
+            return -1;
+        }
+        total_read += read_bytes;
+    }
+
+    // Kirim footer multipart
+    if (esp_http_client_write(client, multipart_footer, strlen(multipart_footer)) < 0) {
+        ESP_LOGE(TAG, "Gagal menulis footer multipart");
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        fclose(fp);
+        return -1;
+    }
+
+    // Dapatkan respons
+    int status = esp_http_client_fetch_headers(client);
+    if (status < 0) {
+        ESP_LOGE(TAG, "Gagal mengambil header respons");
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        fclose(fp);
+        return -1;
+    }
+
+    int response_content_length = esp_http_client_get_content_length(client);
+    ESP_LOGI(TAG, "Status HTTP: %d, Content-Length: %d", status, response_content_length);
+
+    if (status == 200) {
+        ESP_LOGI(TAG, "Upload berhasil!");
+        if (response_content_length > 0) {
+            char *response_buffer = malloc(response_content_length + 1);
+            if (response_buffer) {
+                int read_len = esp_http_client_read_response(client, response_buffer, response_content_length);
+                if (read_len > 0) {
+                    response_buffer[read_len] = '\0';
+                    ESP_LOGI(TAG, "Respons dari server: %s", response_buffer);
+                } else {
+                    ESP_LOGE(TAG, "Gagal membaca respons dari server, read_len: %d", read_len);
+                }
+                free(response_buffer);
+            } else {
+                ESP_LOGE(TAG, "Gagal alokasi memori untuk response_buffer");
+            }
+        } else {
+            ESP_LOGI(TAG, "Tidak ada body respons dari server (Content-Length: 0)");
+        }
+    } else {
+        if (response_content_length > 0) {
+            char *response_buffer = malloc(response_content_length + 1);
+            if (response_buffer) {
+                int read_len = esp_http_client_read_response(client, response_buffer, response_content_length);
+                if (read_len > 0) {
+                    response_buffer[read_len] = '\0';
+                    ESP_LOGI(TAG, "Respons dari server: %s", response_buffer);
+                } else {
+                    ESP_LOGE(TAG, "Gagal membaca respons dari server, read_len: %d", read_len);
+                }
+                free(response_buffer);
+            } else {
+                ESP_LOGE(TAG, "Gagal alokasi memori untuk response_buffer");
+            }
+        } else {
+            ESP_LOGI(TAG, "Tidak ada body respons dari server (Content-Length: 0)");
+        }
+    }
+
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
+    fclose(fp);
+    return (status == 200) ? 0 : -1;
 }
 
 static int console_check(int argc, char **argv)
@@ -246,7 +407,7 @@ static int console_check(int argc, char **argv)
             found = true;
 
             // List XML files in the folder
-            char folder_path[512]; // Increased buffer size to avoid truncation
+            char folder_path[512];
             snprintf(folder_path, sizeof(folder_path), "%s/%s", BASE_PATH, entry->d_name);
             DIR *subdir = opendir(folder_path);
             if (subdir) {
@@ -276,91 +437,15 @@ static int console_check(int argc, char **argv)
     return 0;
 }
 
-static int console_read_file(int argc, char **argv)
+static int console_size(int argc, char **argv)
 {
     if (tinyusb_msc_storage_in_use_by_usb_host()) {
-        ESP_LOGE(TAG, "Storage exposed over USB. Application can't read from storage.");
+        ESP_LOGE(TAG, "Storage exposed over USB. Application can't access storage");
         return -1;
     }
-
-    if (argc != 3) {
-        ESP_LOGE(TAG, "Usage: read_file <folder_name> <file_name>");
-        return -1;
-    }
-
-    const char *folder_name = argv[1];
-    const char *file_name = argv[2];
-
-    // Validate folder name
-    if (strncmp(folder_name, "ecg_archive", 11) != 0) {
-        ESP_LOGE(TAG, "Folder must start with 'ecg_archive'");
-        return -1;
-    }
-
-    // Check if folder exists
-    char folder_path[512];
-    snprintf(folder_path, sizeof(folder_path), "%s/%s", BASE_PATH, folder_name);
-    DIR *dir = opendir(folder_path);
-    if (!dir) {
-        ESP_LOGE(TAG, "Folder %s does not exist", folder_path);
-        return -1;
-    }
-    closedir(dir);
-
-    // Check if file exists and has .XML extension
-    char file_path[768];
-    snprintf(file_path, sizeof(file_path), "%s/%s", folder_path, file_name);
-    if (!strstr(file_name, ".XML")) {
-        ESP_LOGE(TAG, "File must have .XML extension");
-        return -1;
-    }
-
-    FILE *fp = fopen(file_path, "r");
-    if (!fp) {
-        ESP_LOGE(TAG, "Failed to open file %s", file_path);
-        return -1;
-    }
-    fclose(fp);
-
-    // Parse the XML file
-    ESP_LOGI(TAG, "Reading XML file: %s/%s", folder_name, file_name);
-    patient_info_t info;
-    parse_xml_file(file_path, &info);
-
-    // Print patient information
-    printf("\n=== Informasi Pasien ===\n");
-    printf("Nama Pasien     : %s\n", info.name);
-    printf("Jenis Kelamin   : %s\n", info.sex);
-    printf("Umur            : %s tahun\n", info.age);
-    printf("Tanggal Lahir   : %s\n", info.birth_time);
-    printf("Room ID         : %s\n", info.sickroomid);
-    printf("Bed ID          : %s\n", info.bedid);
-    printf("Inhospital ID   : %s\n", info.inhospitalid);
-    printf("Operator        : %s\n", info.cop);
-    printf("Waktu Awal      : %s\n", info.effective_time_low);
-    printf("Waktu Akhir     : %s\n", info.effective_time_high);
-    printf("Case ID         : %s\n", info.caseid);
-    printf("Filter          : %s\n", info.filter);
-    printf("Kode Unik       : %s\n", info.uniquecode);
-    printf("=======================\n");
-
-    // Print EKG interpretation
-    printf("\n=== Hasil Interpretasi EKG ===\n");
-    printf("Heart Rate      : %s\n", info.hr);
-    printf("Interval PR     : %s\n", info.pr_interval);
-    printf("Durasi P        : %s\n", info.p_duration);
-    printf("Durasi QRS      : %s\n", info.qrs_duration);
-    printf("Durasi T        : %s\n", info.t_duration);
-    printf("Durasi QT       : %s\n", info.qt_interval);
-    printf("QT Koreksi      : %s\n", info.qtc_interval);
-    printf("Sudut Axis P    : %s\n", info.p_axis);
-    printf("Sudut Axis QRS  : %s\n", info.qrs_axis);
-    printf("Sudut Axis T    : %s\n", info.t_axis);
-    printf("Amplitudo R V5  : %s\n", info.r_v5);
-    printf("Amplitudo S V1  : %s\n", info.s_v1);
-    printf("Interpretasi    : %s\n", info.interpretation);
-    printf("==============================\n");
-
+    uint32_t sec_count = tinyusb_msc_storage_get_sector_count();
+    uint32_t sec_size = tinyusb_msc_storage_get_sector_size();
+    printf("Storage Capacity %lluMB\n", ((uint64_t) sec_count) * sec_size / (1024 * 1024));
     return 0;
 }
 
@@ -375,598 +460,169 @@ static int console_unmount(int argc, char **argv)
     return 0;
 }
 
-static int console_write(int argc, char **argv)
-{
-    if (tinyusb_msc_storage_in_use_by_usb_host()) {
-        ESP_LOGE(TAG, "Storage exposed over USB. Application can't write to storage.");
-        return -1;
-    }
-    ESP_LOGD(TAG, "Write to storage:");
-    const char *filename = BASE_PATH "/README.MD";
-    FILE *fd = fopen(filename, "r");
-    if (!fd) {
-        ESP_LOGW(TAG, "README.MD doesn't exist yet, creating");
-        fd = fopen(filename, "w");
-        fprintf(fd, "Mass Storage Devices are one of the most common USB devices.\n");
-        fprintf(fd, "In this example, ESP chip will be recognized as a Mass Storage Device.\n");
-        fclose(fd);
-    } else {
-        fclose(fd);
-    }
-    return 0;
-}
-
-static int console_size(int argc, char **argv)
-{
-    if (tinyusb_msc_storage_in_use_by_usb_host()) {
-        ESP_LOGE(TAG, "Storage exposed over USB. Application can't access storage");
-        return -1;
-    }
-    uint32_t sec_count = tinyusb_msc_storage_get_sector_count();
-    uint32_t sec_size = tinyusb_msc_storage_get_sector_size();
-    printf("Storage Capacity %lluMB\n", ((uint64_t) sec_count) * sec_size / (1024 * 1024));
-    return 0;
-}
-
 static int console_status(int argc, char **argv)
 {
     printf("Storage exposed over USB: %s\n", tinyusb_msc_storage_in_use_by_usb_host() ? "Yes" : "No");
     return 0;
 }
 
-static int console_exit(int argc, char **argv)
+static int console_mount(int argc, char **argv)
 {
-    tinyusb_msc_unregister_callback(TINYUSB_MSC_EVENT_MOUNT_CHANGED);
-    tinyusb_msc_storage_deinit();
-    tinyusb_driver_uninstall();
-    printf("Application Exit\n");
-    repl->del(repl);
+    if (!tinyusb_msc_storage_in_use_by_usb_host()) {
+        ESP_LOGE(TAG, "Storage is already mounted to application");
+        return -1;
+    }
+    ESP_LOGI(TAG, "Mounting storage to application...");
+    _mount();
     return 0;
 }
 
-/* Simple XML parser for patient information */
-static void parse_xml_file(const char *path, patient_info_t *info)
+static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
-    // Initialize patient info with default values
-    strcpy(info->name, "N/A");
-    strcpy(info->sex, "N/A");
-    strcpy(info->age, "N/A");
-    strcpy(info->sickroomid, "N/A");
-    strcpy(info->bedid, "N/A");
-    strcpy(info->inhospitalid, "N/A");
-    strcpy(info->cop, "N/A");
-    strcpy(info->hr, "N/A");
-    strcpy(info->birth_time, "N/A");
-    strcpy(info->effective_time_low, "N/A");
-    strcpy(info->effective_time_high, "N/A");
-    strcpy(info->caseid, "N/A");
-    strcpy(info->filter, "N/A");
-    strcpy(info->uniquecode, "N/A");
-    strcpy(info->pr_interval, "N/A");
-    strcpy(info->p_duration, "N/A");
-    strcpy(info->qrs_duration, "N/A");
-    strcpy(info->t_duration, "N/A");
-    strcpy(info->qt_interval, "N/A");
-    strcpy(info->qtc_interval, "N/A");
-    strcpy(info->p_axis, "N/A");
-    strcpy(info->qrs_axis, "N/A");
-    strcpy(info->t_axis, "N/A");
-    strcpy(info->r_v5, "N/A");
-    strcpy(info->s_v1, "N/A");
-    strcpy(info->interpretation, "N/A");
+    esp_mqtt_event_handle_t event = event_data;
+    char full_path[512]; // Deklarasi di awal fungsi
 
-    FILE *fp = fopen(path, "r");
-    if (!fp) {
-        ESP_LOGE(TAG, "Failed to open file %s", path);
-        return;
-    }
+    switch (event->event_id) {
+        case MQTT_EVENT_CONNECTED:
+            ESP_LOGI(TAG, "Terhubung ke MQTT broker");
+            esp_mqtt_client_subscribe(mqtt_client, "ecg1200G/upload", 0);
+            break;
+        case MQTT_EVENT_DISCONNECTED:
+            ESP_LOGI(TAG, "Terputus dari MQTT broker");
+            break;
+        case MQTT_EVENT_SUBSCRIBED:
+            ESP_LOGI(TAG, "Berhasil subscribe ke topik %.*s", event->topic_len, event->topic);
+            break;
+        case MQTT_EVENT_DATA:
+            ESP_LOGI(TAG, "Menerima pesan di topik %.*s: %.*s", event->topic_len, event->topic, event->data_len, event->data);
+            if (event->topic_len == strlen("ecg1200G/upload") && strncmp(event->topic, "ecg1200G/upload", event->topic_len) == 0) {
+                // Trigger upload
+                if (event->data_len == strlen("upload") && strncmp(event->data, "upload", event->data_len) == 0) {
+                    ESP_LOGI(TAG, "Menerima perintah upload, memulai proses...");
+                    ESP_ERROR_CHECK(tinyusb_msc_storage_mount(BASE_PATH)); // Mount storage
+                    console_upload(0, NULL); // Jalankan upload
+                    vTaskDelay(pdMS_TO_TICKS(1000)); // Tunggu proses selesai
 
-    char line[256];
-    bool in_effective_time = false;
-    bool in_annotation = false;
-    while (fgets(line, sizeof(line), fp)) {
-        // Remove leading/trailing whitespace
-        char *pos = line;
-        while (*pos && isspace((unsigned char)*pos)) pos++;
-        char *end = pos + strlen(pos);
-        while (end > pos && isspace((unsigned char)*(end - 1))) *(--end) = '\0';
-
-        // Check for <effectiveTime> context
-        if (strstr(pos, "<effectiveTime>")) {
-            in_effective_time = true;
-        } else if (strstr(pos, "</effectiveTime>")) {
-            in_effective_time = false;
-        }
-
-        // Check for <annotation> context
-        if (strstr(pos, "<annotation>")) {
-            in_annotation = true;
-        } else if (strstr(pos, "</annotation>")) {
-            in_annotation = false;
-        }
-
-        // Parse specific tags
-        if (strstr(pos, "<subjectDemographicPerson>")) {
-            if (fgets(line, sizeof(line), fp)) {
-                pos = line;
-                while (*pos && isspace((unsigned char)*pos)) pos++;
-                end = pos + strlen(pos);
-                while (end > pos && isspace((unsigned char)*(end - 1))) *(--end) = '\0';
-                if (strncmp(pos, "<name>", 6) == 0) {
-                    char *start = pos + 6;
-                    char *end_tag = strstr(start, "</name>");
-                    if (end_tag) {
-                        *end_tag = '\0';
-                        strncpy(info->name, start, sizeof(info->name) - 1);
-                        info->name[sizeof(info->name) - 1] = '\0';
-                    }
-                }
-            }
-        } else if (strstr(pos, "<administrativeGenderCode")) {
-            char *code = strstr(pos, "code=\"");
-            if (code) {
-                code += 6;
-                char *end_code = strchr(code, '"');
-                if (end_code) {
-                    *end_code = '\0';
-                    if (strcmp(code, "M") == 0) {
-                        strcpy(info->sex, "Pria");
-                    } else if (strcmp(code, "F") == 0) {
-                        strcpy(info->sex, "Wanita");
+                    // Hapus folder ecg_archive dan isinya di dalam BASE_PATH
+                    ESP_LOGI(TAG, "Menghapus folder %s/ecg_archive dan isinya...", BASE_PATH);
+                    char path[64];
+                    snprintf(path, sizeof(path), "%s/ecg_archive", BASE_PATH);
+                    DIR *dir = opendir(path);
+                    if (dir != NULL) {
+                        struct dirent *entry;
+                        while ((entry = readdir(dir)) != NULL) {
+                            snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
+                            if (entry->d_type == DT_DIR) {
+                                if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+                                    ESP_LOGI(TAG, "Menghapus subdirektori: %s", full_path);
+                                    rmdir(full_path); // Hapus subdirektori
+                                }
+                            } else {
+                                ESP_LOGI(TAG, "Menghapus file: %s", full_path);
+                                unlink(full_path); // Hapus file
+                            }
+                        }
+                        closedir(dir);
+                        ESP_LOGI(TAG, "Menghapus folder utama: %s", path);
+                        rmdir(path); // Hapus folder utama setelah isinya kosong
+                        ESP_LOGI(TAG, "Folder %s/ecg_archive berhasil dihapus", BASE_PATH);
                     } else {
-                        strcpy(info->sex, "Tidak Diketahui");
+                        ESP_LOGE(TAG, "Gagal membuka folder %s, errno: %d", path, errno);
+                        // Coba remount untuk memastikan path valid
+                        ESP_ERROR_CHECK(tinyusb_msc_storage_mount(BASE_PATH));
+                        dir = opendir(path);
+                        if (dir != NULL) {
+                            ESP_LOGI(TAG, "Remount berhasil, melanjutkan penghapusan...");
+                            struct dirent *entry;
+                            while ((entry = readdir(dir)) != NULL) {
+                                snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
+                                if (entry->d_type == DT_DIR) {
+                                    if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+                                        ESP_LOGI(TAG, "Menghapus subdirektori: %s", full_path);
+                                        rmdir(full_path);
+                                    }
+                                } else {
+                                    ESP_LOGI(TAG, "Menghapus file: %s", full_path);
+                                    unlink(full_path);
+                                }
+                            }
+                            closedir(dir);
+                            rmdir(path);
+                            ESP_LOGI(TAG, "Folder %s/ecg_archive berhasil dihapus setelah remount", BASE_PATH);
+                        } else {
+                            ESP_LOGE(TAG, "Remount gagal, folder tetap tidak bisa dihapus");
+                        }
                     }
-                }
-            }
-        } else if (strstr(pos, "<Age")) {
-            char *value = strstr(pos, "value=\"");
-            if (value) {
-                value += 7;
-                char *end_value = strchr(value, '"');
-                if (end_value) {
-                    *end_value = '\0';
-                    strncpy(info->age, value, sizeof(info->age) - 1);
-                    info->age[sizeof(info->age) - 1] = '\0';
-                }
-            }
-        } else if (strstr(pos, "<Room")) {
-            char *value = strstr(pos, "value=\"");
-            if (value) {
-                value += 7;
-                char *end_value = strchr(value, '"');
-                if (end_value) {
-                    *end_value = '\0';
-                    strncpy(info->sickroomid, value, sizeof(info->sickroomid) - 1);
-                    info->sickroomid[sizeof(info->sickroomid) - 1] = '\0';
-                }
-            }
-        } else if (strstr(pos, "<Bed")) {
-            char *value = strstr(pos, "value=\"");
-            if (value) {
-                value += 7;
-                char *end_value = strchr(value, '"');
-                if (end_value) {
-                    *end_value = '\0';
-                    strncpy(info->bedid, value, sizeof(info->bedid) - 1);
-                    info->bedid[sizeof(info->bedid) - 1] = '\0';
-                }
-            }
-        } else if (strstr(pos, "<inhospitalid>")) {
-            char *start = strstr(pos, "<inhospitalid>");
-            if (start) {
-                start += 13;
-                while (*start && !isalnum((unsigned char)*start)) start++;
-                char *end_tag = strstr(start, "</inhospitalid>");
-                if (end_tag) {
-                    *end_tag = '\0';
-                    strncpy(info->inhospitalid, start, sizeof(info->inhospitalid) - 1);
-                    info->inhospitalid[sizeof(info->inhospitalid) - 1] = '\0';
-                }
-            }
-        } else if (strstr(pos, "<cop>")) {
-            char *start = strstr(pos, "<cop>");
-            if (start) {
-                start += 5;
-                char *end_tag = strstr(start, "</cop>");
-                if (end_tag) {
-                    *end_tag = '\0';
-                    strncpy(info->cop, start, sizeof(info->cop) - 1);
-                    info->cop[sizeof(info->cop) - 1] = '\0';
-                }
-            }
-        } else if (strstr(pos, "<HR")) {
-            char *start = strstr(pos, "<HR");
-            if (start) {
-                start = strchr(start, '>');
-                if (start) {
-                    start++;
-                    char *end_tag = strstr(start, "</HR>");
-                    if (end_tag) {
-                        *end_tag = '\0';
-                        while (*start && isspace((unsigned char)*start)) start++;
-                        char *value_end = end_tag - 1;
-                        while (value_end > start && isspace((unsigned char)*value_end)) *value_end-- = '\0';
-                        strncpy(info->hr, start, sizeof(info->hr) - 1);
-                        info->hr[sizeof(info->hr) - 1] = '\0';
-                    }
-                }
-            }
-        } else if (strstr(pos, "<birthTime")) {
-            char *value = strstr(pos, "value=\"");
-            if (value) {
-                value += 7;
-                char *end_value = strchr(value, '"');
-                if (end_value) {
-                    *end_value = '\0';
-                    strncpy(info->birth_time, value, sizeof(info->birth_time) - 1);
-                    info->birth_time[sizeof(info->birth_time) - 1] = '\0';
-                }
-            }
-        } else if (in_effective_time && strstr(pos, "<low")) {
-            char *value = strstr(pos, "value=\"");
-            if (value) {
-                value += 7;
-                char *end_value = strchr(value, '"');
-                if (end_value) {
-                    *end_value = '\0';
-                    strncpy(info->effective_time_low, value, sizeof(info->effective_time_low) - 1);
-                    info->effective_time_low[sizeof(info->effective_time_low) - 1] = '\0';
-                }
-            }
-        } else if (in_effective_time && strstr(pos, "<high")) {
-            char *value = strstr(pos, "value=\"");
-            if (value) {
-                value += 7;
-                char *end_value = strchr(value, '"');
-                if (end_value) {
-                    *end_value = '\0';
-                    strncpy(info->effective_time_high, value, sizeof(info->effective_time_high) - 1);
-                    info->effective_time_high[sizeof(info->effective_time_high) - 1] = '\0';
-                }
-            }
-        } else if (strstr(pos, "<caseid>")) {
-            char *start = strstr(pos, "<caseid>");
-            if (start) {
-                start += 8;
-                char *end_tag = strstr(start, "</caseid>");
-                if (end_tag) {
-                    *end_tag = '\0';
-                    strncpy(info->caseid, start, sizeof(info->caseid) - 1);
-                    info->caseid[sizeof(info->caseid) - 1] = '\0';
-                }
-            }
-        } else if (strstr(pos, "<filter>")) {
-            char *start = strstr(pos, "<filter>");
-            if (start) {
-                start += 8;
-                char *end_tag = strstr(start, "</filter>");
-                if (end_tag) {
-                    *end_tag = '\0';
-                    strncpy(info->filter, start, sizeof(info->filter) - 1);
-                    info->filter[sizeof(info->filter) - 1] = '\0';
-                }
-            }
-        } else if (strstr(pos, "<uniquecode>")) {
-            char *start = strstr(pos, "<uniquecode>");
-            if (start) {
-                start += 11;
-                while (*start && !isalnum((unsigned char)*start)) start++;
-                char *end_tag = strstr(start, "</uniquecode>");
-                if (end_tag) {
-                    *end_tag = '\0';
-                    strncpy(info->uniquecode, start, sizeof(info->uniquecode) - 1);
-                    info->uniquecode[sizeof(info->uniquecode) - 1] = '\0';
-                }
-            }
-        } else if (strstr(pos, "<PRInterval")) {
-            char *start = strstr(pos, "<PRInterval");
-            if (start) {
-                start = strchr(start, '>');
-                if (start) {
-                    start++;
-                    char *end_tag = strstr(start, "</PRInterval>");
-                    if (end_tag) {
-                        *end_tag = '\0';
-                        while (*start && isspace((unsigned char)*start)) start++;
-                        char *value_end = end_tag - 1;
-                        while (value_end > start && isspace((unsigned char)*value_end)) *value_end-- = '\0';
-                        snprintf(info->pr_interval, sizeof(info->pr_interval), "%s ms", start);
-                    }
-                }
-            }
-        } else if (strstr(pos, "<PDuration")) {
-            char *start = strstr(pos, "<PDuration");
-            if (start) {
-                start = strchr(start, '>');
-                if (start) {
-                    start++;
-                    char *end_tag = strstr(start, "</PDuration>");
-                    if (end_tag) {
-                        *end_tag = '\0';
-                        while (*start && isspace((unsigned char)*start)) start++;
-                        char *value_end = end_tag - 1;
-                        while (value_end > start && isspace((unsigned char)*value_end)) *value_end-- = '\0';
-                        snprintf(info->p_duration, sizeof(info->p_duration), "%s ms", start);
-                    }
-                }
-            }
-        } else if (strstr(pos, "<QRSDuration")) {
-            char *start = strstr(pos, "<QRSDuration");
-            if (start) {
-                start = strchr(start, '>');
-                if (start) {
-                    start++;
-                    char *end_tag = strstr(start, "</QRSDuration>");
-                    if (end_tag) {
-                        *end_tag = '\0';
-                        while (*start && isspace((unsigned char)*start)) start++;
-                        char *value_end = end_tag - 1;
-                        while (value_end > start && isspace((unsigned char)*value_end)) *value_end-- = '\0';
-                        snprintf(info->qrs_duration, sizeof(info->qrs_duration), "%s ms", start);
-                    }
-                }
-            }
-        } else if (strstr(pos, "<TDuration")) {
-            char *start = strstr(pos, "<TDuration");
-            if (start) {
-                start = strchr(start, '>');
-                if (start) {
-                    start++;
-                    char *end_tag = strstr(start, "</TDuration>");
-                    if (end_tag) {
-                        *end_tag = '\0';
-                        while (*start && isspace((unsigned char)*start)) start++;
-                        char *value_end = end_tag - 1;
-                        while (value_end > start && isspace((unsigned char)*value_end)) *value_end-- = '\0';
-                        snprintf(info->t_duration, sizeof(info->t_duration), "%s ms", start);
-                    }
-                }
-            }
-        } else if (strstr(pos, "<QTInterval")) {
-            char *start = strstr(pos, "<QTInterval");
-            if (start) {
-                start = strchr(start, '>');
-                if (start) {
-                    start++;
-                    char *end_tag = strstr(start, "</QTInterval>");
-                    if (end_tag) {
-                        *end_tag = '\0';
-                        while (*start && isspace((unsigned char)*start)) start++;
-                        char *value_end = end_tag - 1;
-                        while (value_end > start && isspace((unsigned char)*value_end)) *value_end-- = '\0';
-                        snprintf(info->qt_interval, sizeof(info->qt_interval), "%s ms", start);
-                    }
-                }
-            }
-        } else if (strstr(pos, "<QTcInterval")) {
-            char *start = strstr(pos, "<QTcInterval");
-            if (start) {
-                start = strchr(start, '>');
-                if (start) {
-                    start++;
-                    char *end_tag = strstr(start, "</QTcInterval>");
-                    if (end_tag) {
-                        *end_tag = '\0';
-                        while (*start && isspace((unsigned char)*start)) start++;
-                        char *value_end = end_tag - 1;
-                        while (value_end > start && isspace((unsigned char)*value_end)) *value_end-- = '\0';
-                        snprintf(info->qtc_interval, sizeof(info->qtc_interval), "%s ms", start);
-                    }
-                }
-            }
-        } else if (strstr(pos, "<PAxis")) {
-            char *start = strstr(pos, "<PAxis");
-            if (start) {
-                start = strchr(start, '>');
-                if (start) {
-                    start++;
-                    char *end_tag = strstr(start, "</PAxis>");
-                    if (end_tag) {
-                        *end_tag = '\0';
-                        while (*start && isspace((unsigned char)*start)) start++;
-                        char *value_end = end_tag - 1;
-                        while (value_end > start && isspace((unsigned char)*value_end)) *value_end-- = '\0';
-                        snprintf(info->p_axis, sizeof(info->p_axis), "%s deg", start);
-                    }
-                }
-            }
-        } else if (strstr(pos, "<QRSAxis")) {
-            char *start = strstr(pos, "<QRSAxis");
-            if (start) {
-                start = strchr(start, '>');
-                if (start) {
-                    start++;
-                    char *end_tag = strstr(start, "</QRSAxis>");
-                    if (end_tag) {
-                        *end_tag = '\0';
-                        while (*start && isspace((unsigned char)*start)) start++;
-                        char *value_end = end_tag - 1;
-                        while (value_end > start && isspace((unsigned char)*value_end)) *value_end-- = '\0';
-                        snprintf(info->qrs_axis, sizeof(info->qrs_axis), "%s deg", start);
-                    }
-                }
-            }
-        } else if (strstr(pos, "<TAxis")) {
-            char *start = strstr(pos, "<TAxis");
-            if (start) {
-                start = strchr(start, '>');
-                if (start) {
-                    start++;
-                    char *end_tag = strstr(start, "</TAxis>");
-                    if (end_tag) {
-                        *end_tag = '\0';
-                        while (*start && isspace((unsigned char)*start)) start++;
-                        char *value_end = end_tag - 1;
-                        while (value_end > start && isspace((unsigned char)*value_end)) *value_end-- = '\0';
-                        snprintf(info->t_axis, sizeof(info->t_axis), "%s deg", start);
-                    }
-                }
-            }
-        } else if (strstr(pos, "<R_V5")) {
-            char *start = strstr(pos, "<R_V5");
-            if (start) {
-                start = strchr(start, '>');
-                if (start) {
-                    start++;
-                    char *end_tag = strstr(start, "</R_V5>");
-                    if (end_tag) {
-                        *end_tag = '\0';
-                        while (*start && isspace((unsigned char)*start)) start++;
-                        char *value_end = end_tag - 1;
-                        while (value_end > start && isspace((unsigned char)*value_end)) *value_end-- = '\0';
-                        snprintf(info->r_v5, sizeof(info->r_v5), "%s mV", start);
-                    }
-                }
-            }
-        } else if (strstr(pos, "<S_V1")) {
-            char *start = strstr(pos, "<S_V1");
-            if (start) {
-                start = strchr(start, '>');
-                if (start) {
-                    start++;
-                    char *end_tag = strstr(start, "</S_V1>");
-                    if (end_tag) {
-                        *end_tag = '\0';
-                        while (*start && isspace((unsigned char)*start)) start++;
-                        char *value_end = end_tag - 1;
-                        while (value_end > start && isspace((unsigned char)*value_end)) *value_end-- = '\0';
-                        snprintf(info->s_v1, sizeof(info->s_v1), "%s mV", start);
-                    }
-                }
-            }
-        } else if (in_annotation && strstr(pos, "<value xsi:type=\"ST\">")) {
-            char *start = strstr(pos, "<value xsi:type=\"ST\">");
-            if (start) {
-                start += 20; // Skip <value xsi:type="ST">
-                while (*start && !isalnum((unsigned char)*start)) start++; // Skip non-alphanumeric characters
-                char *end_tag = strstr(start, "</value>");
-                if (end_tag) {
-                    *end_tag = '\0';
-                    while (*start && isspace((unsigned char)*start)) start++;
-                    char *value_end = end_tag - 1;
-                    while (value_end > start && isspace((unsigned char)*value_end)) *value_end-- = '\0';
-                    strncpy(info->interpretation, start, sizeof(info->interpretation) - 1);
-                    info->interpretation[sizeof(info->interpretation) - 1] = '\0';
-                }
-            }
-        }
-    }
 
-    fclose(fp);
+                    ESP_ERROR_CHECK(tinyusb_msc_storage_unmount()); // Unmount (expose) kembali
+                    ESP_LOGI(TAG, "Proses upload selesai, kembali ke mode expose");
+                } else {
+                    ESP_LOGW(TAG, "Payload tidak valid, abaikan. Harus 'upload'");
+                }
+            }
+            break;
+        default:
+            ESP_LOGI(TAG, "Event MQTT lainnya: %d", event->event_id);
+            break;
+    }
 }
 
-static int console_read(int argc, char **argv)
+static void mqtt_app_start(void)
 {
-    if (tinyusb_msc_storage_in_use_by_usb_host()) {
-        ESP_LOGE(TAG, "Storage exposed over USB. Application can't read from storage.");
-        return -1;
-    }
-
-    // Find the latest ecg_archive folder
-    DIR *dir = opendir(BASE_PATH);
-    if (!dir) {
-        ESP_LOGE(TAG, "Failed to open directory %s", BASE_PATH);
-        return -1;
-    }
-
-    struct dirent *entry;
-    char latest_folder[256] = "";
-    int max_index = -1;
-
-    while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_type == DT_DIR && strncmp(entry->d_name, "ecg_archive", 11) == 0) {
-            if (strcmp(entry->d_name, "ecg_archive") == 0) {
-                if (max_index < 0) {
-                    strcpy(latest_folder, entry->d_name);
-                    max_index = 0;
-                }
-            } else {
-                int index = atoi(entry->d_name + 11); // Skip "ecg_archive_"
-                if (index > max_index) {
-                    max_index = index;
-                    strcpy(latest_folder, entry->d_name);
-                }
-            }
-        }
-    }
-    closedir(dir);
-
-    if (max_index == -1 && strlen(latest_folder) == 0) {
-        ESP_LOGE(TAG, "No ecg_archive folder found in %s", BASE_PATH);
-        return -1;
-    }
-
-    // Find XML file in the latest folder
-    char folder_path[512];
-    snprintf(folder_path, sizeof(folder_path), "%s/%s", BASE_PATH, latest_folder);
-    DIR *subdir = opendir(folder_path);
-    if (!subdir) {
-        ESP_LOGE(TAG, "Failed to open folder %s", folder_path);
-        return -1;
-    }
-
-    char xml_file[256] = "";
-    while ((entry = readdir(subdir)) != NULL) {
-        if (entry->d_type == DT_REG && strstr(entry->d_name, ".XML")) {
-            strcpy(xml_file, entry->d_name);
-            break; // Take the first XML file
-        }
-    }
-    closedir(subdir);
-
-    if (strlen(xml_file) == 0) {
-        ESP_LOGE(TAG, "No XML files found in %s", folder_path);
-        return -1;
-    }
-
-    // Parse the XML file
-    char file_path[768];
-    snprintf(file_path, sizeof(file_path), "%s/%s", folder_path, xml_file);
-    ESP_LOGI(TAG, "Latest folder: %s", latest_folder);
-    ESP_LOGI(TAG, "Reading XML file: %s", xml_file);
-    patient_info_t info;
-    parse_xml_file(file_path, &info);
-
-    // Print patient information
-    printf("\n=== Informasi Pasien ===\n");
-    printf("Nama Pasien     : %s\n", info.name);
-    printf("Jenis Kelamin   : %s\n", info.sex);
-    printf("Umur            : %s tahun\n", info.age);
-    printf("Tanggal Lahir   : %s\n", info.birth_time);
-    printf("Room ID         : %s\n", info.sickroomid);
-    printf("Bed ID          : %s\n", info.bedid);
-    printf("Inhospital ID   : %s\n", info.inhospitalid);
-    printf("Operator        : %s\n", info.cop);
-    printf("Waktu Awal      : %s\n", info.effective_time_low);
-    printf("Waktu Akhir     : %s\n", info.effective_time_high);
-    printf("Case ID         : %s\n", info.caseid);
-    printf("Filter          : %s\n", info.filter);
-    printf("Kode Unik       : %s\n", info.uniquecode);
-    printf("=======================\n");
-
-    // Print EKG interpretation
-    printf("\n=== Hasil Interpretasi EKG ===\n");
-    printf("Heart Rate      : %s\n", info.hr);
-    printf("Interval PR     : %s\n", info.pr_interval);
-    printf("Durasi P        : %s\n", info.p_duration);
-    printf("Durasi QRS      : %s\n", info.qrs_duration);
-    printf("Durasi T        : %s\n", info.t_duration);
-    printf("Durasi QT       : %s\n", info.qt_interval);
-    printf("QT Koreksi      : %s\n", info.qtc_interval);
-    printf("Sudut Axis P    : %s\n", info.p_axis);
-    printf("Sudut Axis QRS  : %s\n", info.qrs_axis);
-    printf("Sudut Axis T    : %s\n", info.t_axis);
-    printf("Amplitudo R V5  : %s\n", info.r_v5);
-    printf("Amplitudo S V1  : %s\n", info.s_v1);
-    printf("Interpretasi    : %s\n", info.interpretation);
-    printf("==============================\n");
-
-    return 0;
+    esp_mqtt_client_config_t mqtt_cfg = {
+        .broker = {
+            .address.uri = "mqtt://192.168.13.173",
+            .address.port = 1883,
+        },
+        .task = {
+            .stack_size = 10240, // Tingkatkan ukuran stack ke 10KB
+            .priority = 5,       // Prioritas default
+        },
+    };
+    mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
+    /* Register event handler */
+    esp_mqtt_client_register_event(mqtt_client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
+    esp_mqtt_client_start(mqtt_client);
 }
 
-    static void storage_mount_changed_cb(tinyusb_msc_event_t *event)
+static void storage_mount_changed_cb(tinyusb_msc_event_t *event)
 {
     ESP_LOGI(TAG, "Storage mounted to application: %s", event->mount_changed_data.is_mounted ? "Yes" : "No");
+}
+
+static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
+{
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+        esp_wifi_connect();
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        ESP_LOGI(TAG, "Wi-Fi terputus, mencoba menghubungkan kembali...");
+        esp_wifi_connect();
+    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
+        ESP_LOGI(TAG, "Wi-Fi terhubung, IP: " IPSTR, IP2STR(&event->ip_info.ip));
+    }
+}
+
+static void _mount(void)
+{
+    ESP_LOGI(TAG, "Mount storage...");
+    ESP_ERROR_CHECK(tinyusb_msc_storage_mount(BASE_PATH));
+
+    ESP_LOGI(TAG, "\nls command output:");
+    struct dirent *d;
+    DIR *dh = opendir(BASE_PATH);
+    if (!dh) {
+        if (errno == ENOENT) {
+            ESP_LOGE(TAG, "Directory doesn't exist %s", BASE_PATH);
+        } else {
+            ESP_LOGE(TAG, "Unable to read directory %s", BASE_PATH);
+        }
+        return;
+    }
+    while ((d = readdir(dh)) != NULL) {
+        printf("%s\n", d->d_name);
+    }
+    closedir(dh);
 }
 
 #ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
@@ -1059,8 +715,91 @@ clean:
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "Initializing storage...");
+    ESP_LOGI(TAG, "Menginisialisasi Wi-Fi...");
 
+    // Inisialisasi NVS
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
+    // Inisialisasi TCP/IP stack
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_create_default_wifi_sta();
+
+    // Inisialisasi Wi-Fi
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    // Daftarkan handler untuk event Wi-Fi
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
+
+    // Konfigurasi Wi-Fi sebagai station
+    wifi_config_t wifi_config = {
+        .sta = {
+            .ssid = "Elitech",
+            .password = "wifis1nko",
+        },
+    };
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+
+    // Definisi IP statis (hardcode, bisa dikomentari untuk menggunakan DHCP)
+    #define USE_STATIC_IP
+    #ifdef USE_STATIC_IP
+    // esp_netif_ip_info_t ip_info = {
+    //     .ip = {
+    //         .addr = ipaddr_addr("192.168.13.100") // Ganti dengan IP statis yang diinginkan
+    //     },
+    //     .netmask = {
+    //         .addr = ipaddr_addr("255.255.255.0") // Netmask
+    //     },
+    //     .gw = {
+    //         .addr = ipaddr_addr("192.168.13.1")  // Gateway
+    //     },
+    // };
+    // esp_netif_dhcpc_stop(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")); // Matikan DHCP
+    // esp_netif_set_ip_info(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), &ip_info);
+    // ESP_LOGI(TAG, "Menggunakan IP statis: " IPSTR ", Netmask: " IPSTR ", Gateway: " IPSTR,
+    //          IP2STR(&ip_info.ip), IP2STR(&ip_info.netmask), IP2STR(&ip_info.gw));
+    #else
+    esp_netif_dhcpc_start(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")); // Aktifkan DHCP
+    ESP_LOGI(TAG, "Menggunakan IP dinamis (DHCP)");
+    #endif
+
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    ESP_LOGI(TAG, "Menunggu koneksi Wi-Fi...");
+    // Tunggu hingga terhubung (timeout 30 detik)
+    TickType_t start_time = xTaskGetTickCount();
+    while (true) {
+        esp_netif_ip_info_t ip_info_check;
+        if (esp_netif_get_ip_info(esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"), &ip_info_check) == ESP_OK &&
+            ip_info_check.ip.addr != 0) {
+            #ifdef USE_STATIC_IP
+            ESP_LOGI(TAG, "Wi-Fi berhasil terhubung, IP: " IPSTR, IP2STR(&ip_info_check.ip));
+            #else
+            ESP_LOGI(TAG, "Wi-Fi berhasil terhubung, IP: " IPSTR ", Netmask: " IPSTR ", Gateway: " IPSTR,
+                     IP2STR(&ip_info_check.ip), IP2STR(&ip_info_check.netmask), IP2STR(&ip_info_check.gw));
+            #endif
+            mqtt_app_start(); // Mulai MQTT setelah Wi-Fi terhubung
+            break;
+        }
+        if ((xTaskGetTickCount() - start_time) > pdMS_TO_TICKS(30000)) {
+            ESP_LOGE(TAG, "Gagal terhubung ke Wi-Fi dalam 30 detik");
+            return;
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+
+    ESP_LOGI(TAG, "Ping ke server 192.168.13.145...");
+    system("ping 192.168.13.145");
+
+    ESP_LOGI(TAG, "Initializing storage...");
 #ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
     static wl_handle_t wl_handle = WL_INVALID_HANDLE;
     ESP_ERROR_CHECK(storage_init_spiflash(&wl_handle));
@@ -1082,8 +821,11 @@ void app_main(void)
 #endif
     ESP_ERROR_CHECK(tinyusb_msc_register_callback(TINYUSB_MSC_EVENT_MOUNT_CHANGED, storage_mount_changed_cb));
 
-    // Mount storage
+    // Mount storage (akan di-unmount kembali di bawah)
     _mount();
+    // Pindahkan unmount setelah inisialisasi TinyUSB
+    ESP_LOGI(TAG, "Mengatur mode default expose...");
+    ESP_ERROR_CHECK(tinyusb_msc_storage_unmount());
 
     ESP_LOGI(TAG, "USB MSC initialization");
     const tinyusb_config_t tusb_cfg = {
@@ -1104,7 +846,7 @@ void app_main(void)
 
     // Initialize console
     esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
-    repl_config.task_stack_size = 8192;
+    repl_config.task_stack_size = 92160;
     repl_config.prompt = PROMPT_STR ">";
     repl_config.max_cmdline_length = 64;
 
