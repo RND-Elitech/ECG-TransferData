@@ -5,7 +5,7 @@
   "idf.openOcdConfigs": [
     "board/esp32-wrover-kit-3.3v.cfg"
   ],
-  "idf.portWin": "COM7",
+  "idf.portWin": "COM9",
   "idf.toolsPathWin": "c:\\Users\\RND-5\\.espressif",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32s3"
@@ -32,5 +32,6 @@
     "nvs_flash.h": "c",
     "esp_timer.h": "c",
     "esp_netif.h": "c"
-  }
+  },
+  "idf.currentSetup": "C:\\Users\\ELITECH-1\\esp\\v5.5.1\\esp-idf"
 }

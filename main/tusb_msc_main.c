@@ -257,7 +257,7 @@ static int console_upload(int argc, char **argv)
 
     // Konfigurasi HTTP client
     esp_http_client_config_t config = {
-        .url = "http://192.168.13.156:3000/api/ecg1200g/upload",
+        .url = "http://192.168.13.156:3000/api/ecg-1200g/upload",
         .method = HTTP_METHOD_POST,
         .timeout_ms = 30000,
         .buffer_size = 2048,
