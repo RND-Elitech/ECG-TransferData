@@ -571,8 +571,12 @@ static void mqtt_app_start(void)
 {
     esp_mqtt_client_config_t mqtt_cfg = {
         .broker = {
-            .address.uri = "mqtt://192.168.13.173",
-            .address.port = 1883,
+            .address.uri = "mqtts://dev.samelement.com",
+            .address.port = 8883,
+        },
+        .credentials = {
+            .username = "iotgateway",
+            .authentication.password = "iotgateway10nice",
         },
         .task = {
             .stack_size = 10240, // Tingkatkan ukuran stack ke 10KB

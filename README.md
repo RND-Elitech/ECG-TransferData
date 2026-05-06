@@ -46,7 +46,8 @@ Anda dapat berinteraksi dengan perangkat melalui terminal serial menggunakan per
 ## Konfigurasi Teknis
 *   **Base Path**: `/data`
 *   **Server Target**: `192.168.13.156` (Port 3000)
-*   **MQTT Broker**: `192.168.13.173` (Port 1883)
+*   **MQTT Broker**: `dev.samelement.com` (Port 8883, MQTTS)
+*   **MQTT User**: `iotgateway`
 *   **Vendor ID USB**: `0x303A` (Espressif)
 *   **Product ID USB**: `0x4002`
 
