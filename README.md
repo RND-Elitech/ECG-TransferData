@@ -53,11 +53,14 @@ Anda dapat berinteraksi dengan perangkat melalui terminal serial menggunakan per
 Ada dua cara untuk memicu pengiriman data dari perangkat ke server:
 
 #### A. Melalui MQTT (Otomatis/Jarak Jauh)
-Kirim pesan teks (payload) ke topik berikut menggunakan aplikasi MQTT client (seperti MQTT Explorer):
-*   **Topic**: `ecg1200G/upload`
-*   **Payload**: `upload`
+Untuk memicu proses upload secara remote, kirimkan pesan melalui broker MQTT dengan detail sebagai berikut:
 
-**Efek**: ESP32 akan otomatis memutus koneksi USB ke PC/EKG (unmount), mencari folder `ecg_archive` terbaru, mencari file `.XML` di dalamnya, mengunggahnya ke server, menghapus folder tersebut setelah berhasil, dan menyambungkan kembali koneksi USB.
+| Parameter | Detail |
+| :--- | :--- |
+| **Topik (Topic)** | `ecg1200G/upload` |
+| **Pesan (Payload)** | `upload` |
+
+**Efek**: ESP32 akan otomatis memutus koneksi USB ke PC/EKG (unmount), mencari folder `ecg_archive` terbaru, mencari file `.XML` di dalamnya, mengunggahnya ke server, menghapus folder tersebut setelah berhasil, dan menyambungkan kembali koneksi USB ke mode *Expose*.
 
 #### B. Melalui Konsol Serial (Manual)
 1.  Buka terminal serial (misal: Monitor di VS Code atau Putty) dengan baudrate **115200**.
