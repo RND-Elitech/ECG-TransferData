@@ -203,17 +203,30 @@ static int console_upload_core(int argc, char **argv)
 
     int success_count = 0;
     int fail_count = 0;
-    bool found_xml = false;
+    bool found_file = false;
 
     while ((entry = readdir(subdir)) != NULL) {
-        if (entry->d_type == DT_REG && strstr(entry->d_name, ".XML")) {
-            found_xml = true;
-            char xml_file[256];
-            strcpy(xml_file, entry->d_name);
+        if (entry->d_type == DT_REG && 
+            (strstr(entry->d_name, ".XML") || strstr(entry->d_name, ".xml") ||
+             strstr(entry->d_name, ".JPG") || strstr(entry->d_name, ".jpg") ||
+             strstr(entry->d_name, ".BMP") || strstr(entry->d_name, ".bmp"))) {
+            found_file = true;
+            char target_file[256];
+            strcpy(target_file, entry->d_name);
+
+            // Tentukan MIME type
+            const char *mime_type = "application/octet-stream";
+            if (strstr(target_file, ".XML") || strstr(target_file, ".xml")) {
+                mime_type = "application/xml";
+            } else if (strstr(target_file, ".JPG") || strstr(target_file, ".jpg")) {
+                mime_type = "image/jpeg";
+            } else if (strstr(target_file, ".BMP") || strstr(target_file, ".bmp")) {
+                mime_type = "image/bmp";
+            }
 
             // Cek file
             char file_path[768];
-            snprintf(file_path, sizeof(file_path), "%s/%s", folder_path, xml_file);
+            snprintf(file_path, sizeof(file_path), "%s/%s", folder_path, target_file);
 
             FILE *fp = fopen(file_path, "rb");
             if (!fp) {
@@ -241,8 +254,8 @@ static int console_upload_core(int argc, char **argv)
             // Susun header multipart
             char multipart_header[512];
             snprintf(multipart_header, sizeof(multipart_header),
-                     "--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\nContent-Type: application/xml\r\n\r\n",
-                     boundary, xml_file);
+                     "--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\nContent-Type: %s\r\n\r\n",
+                     boundary, target_file, mime_type);
 
             // Susun footer multipart
             char multipart_footer[64]; // Diperbesar dari 32 ke 64 untuk menampung string lengkap
@@ -281,7 +294,7 @@ static int console_upload_core(int argc, char **argv)
                 continue;
             }
 
-            ESP_LOGI(TAG, "Mengunggah file: %s (%d bytes) dari folder: %s", xml_file, file_size, latest_folder);
+            ESP_LOGI(TAG, "Mengunggah file: %s (%d bytes) dari folder: %s", target_file, file_size, latest_folder);
 
             // Kirim header multipart
             if (esp_http_client_write(client, multipart_header, strlen(multipart_header)) < 0) {
@@ -380,8 +393,8 @@ static int console_upload_core(int argc, char **argv)
     }
     closedir(subdir);
 
-    if (!found_xml) {
-        ESP_LOGE(TAG, "Tidak ditemukan file XML di %s", folder_path);
+    if (!found_file) {
+        ESP_LOGE(TAG, "Tidak ditemukan file valid (.xml, .jpg, .bmp) di %s", folder_path);
         return -1;
     }
 
@@ -445,17 +458,20 @@ static int console_check(int argc, char **argv)
             snprintf(folder_path, sizeof(folder_path), "%s/%s", BASE_PATH, entry->d_name);
             DIR *subdir = opendir(folder_path);
             if (subdir) {
-                printf("  XML files:\n");
+                printf("  Files (.xml, .jpg, .bmp):\n");
                 struct dirent *subentry;
                 bool file_found = false;
                 while ((subentry = readdir(subdir)) != NULL) {
-                    if (subentry->d_type == DT_REG && strstr(subentry->d_name, ".XML")) {
+                    if (subentry->d_type == DT_REG && 
+                        (strstr(subentry->d_name, ".XML") || strstr(subentry->d_name, ".xml") ||
+                         strstr(subentry->d_name, ".JPG") || strstr(subentry->d_name, ".jpg") ||
+                         strstr(subentry->d_name, ".BMP") || strstr(subentry->d_name, ".bmp"))) {
                         printf("    - %s\n", subentry->d_name);
                         file_found = true;
                     }
                 }
                 if (!file_found) {
-                    printf("    (No XML files found)\n");
+                    printf("    (No valid files found)\n");
                 }
                 closedir(subdir);
             } else {
