@@ -525,6 +525,8 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "Berhasil terhubung ke broker MQTT (mqtts://dev.samelement.com:8883)");
             esp_mqtt_client_subscribe(mqtt_client, "ecg1200G/upload", 0);
+            int msg_id = esp_mqtt_client_publish(mqtt_client, "ecg1200G/status", "dongleECG1 online", 0, 0, 0);
+            ESP_LOGI(TAG, "Berhasil publish status online ke topik: ecg1200G/status (msg_id=%d)", msg_id);
             break;
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "Terputus dari MQTT broker");
