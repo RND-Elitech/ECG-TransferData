@@ -62,6 +62,7 @@ Semua topik menggunakan `gateway_sn` secara dinamis sehingga mendukung banyak pe
 | `iotgateway/{sn}/info` | Saat konek | Ya | Mengirim info firmware & hardware |
 | `iotgateway/{sn}/dongle/function` | Saat konek | Ya | Mengirim IP dan fungsi perangkat |
 | `iotgateway/{sn}/ip` | Saat menerima perintah `get` | Tidak | Membalas permintaan IP address |
+| `iotgateway/{sn}/upload/status` | Saat selesai upload | Tidak | Mengirim hasil sukses/gagal upload |
 
 #### Payload: `status/online` (Online)
 ```json
@@ -116,6 +117,17 @@ Semua topik menggunakan `gateway_sn` secara dinamis sehingga mendukung banyak pe
   }
 }
 ```
+
+#### Payload: `upload/status` (Selesai Upload)
+```json
+{
+  "gateway_sn": "B0001",
+  "data": {
+    "status": "completed"
+  }
+}
+```
+> **Catatan**: Jika gagal, status bernilai `"failed"`. Informasi jumlah file yang sukses/gagal dapat dilihat melalui log terminal.
 
 ---
 

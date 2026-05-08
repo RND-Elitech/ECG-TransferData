@@ -527,17 +527,33 @@ static int console_mount(int argc, char **argv)
     return 0;
 }
 
-static void background_upload_task(void *pvParameters) {
-    ESP_LOGI(TAG, "Menjalankan proses upload dari background task...");
-    console_upload(0, NULL);
-    vTaskDelete(NULL);
-}
-
 static const char *GATEWAY_SN = "B0001";
 static const char *MQTT_BROKER_URI = "mqtts://dev.samelement.com";
 static const int MQTT_BROKER_PORT = 8888;
 static const char *MQTT_USERNAME = "iotgateway";
 static const char *MQTT_PASSWORD = "iotgateway10nice";
+
+static void background_upload_task(void *pvParameters) {
+    ESP_LOGI(TAG, "Menjalankan proses upload dari background task...");
+    int ret = console_upload(0, NULL);
+    
+    char pub_topic[128];
+    snprintf(pub_topic, sizeof(pub_topic), "iotgateway/%s/upload/status", GATEWAY_SN);
+    
+    char pub_payload[256];
+    if (ret == 0) {
+        snprintf(pub_payload, sizeof(pub_payload), 
+            "{\"gateway_sn\":\"%s\",\"data\":{\"status\":\"completed\"}}", GATEWAY_SN);
+    } else {
+        snprintf(pub_payload, sizeof(pub_payload), 
+            "{\"gateway_sn\":\"%s\",\"data\":{\"status\":\"failed\"}}", GATEWAY_SN);
+    }
+    
+    int msg_id = esp_mqtt_client_publish(mqtt_client, pub_topic, pub_payload, 0, 1, 0);
+    ESP_LOGI(TAG, "Berhasil publish status upload ke topik: %s (msg_id=%d)", pub_topic, msg_id);
+    
+    vTaskDelete(NULL);
+}
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
