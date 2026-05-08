@@ -2,89 +2,179 @@
 
 Proyek ini mengimplementasikan perangkat **USB Mass Storage Class (MSC)** menggunakan ESP32 (S2/S3). Perangkat ini bertindak sebagai jembatan antara mesin EKG (sebagai USB Host) dan server penyimpanan data melalui Wi-Fi.
 
+---
+
 ## Analisis `main/tusb_msc_main.c`
 
-File `main/tusb_msc_main.c` adalah inti dari aplikasi ini. Berikut adalah penjelasan mendalam mengenai komponen dan alurnya:
+File `main/tusb_msc_main.c` adalah inti dari aplikasi ini.
 
 ### 1. Fungsi Utama (Core Purpose)
 Program ini memungkinkan ESP32 untuk:
-*   Berperan sebagai Flash Drive USB (MSC) yang dapat dibaca/tulis oleh PC atau perangkat medis (EKG).
-*   Mengelola penyimpanan data pada **SD Card** atau **Internal SPI Flash**.
-*   Mengunggah file data EKG (format `.XML`) ke server melalui protokol HTTP secara otomatis atau melalui perintah.
+- Berperan sebagai Flash Drive USB (MSC) yang dapat dibaca/tulis oleh PC atau perangkat medis (EKG).
+- Mengelola penyimpanan data pada **SD Card** atau **Internal SPI Flash**.
+- Mengunggah file data EKG (format `.XML`, `.JPG`, `.BMP`) ke server melalui HTTP secara otomatis.
+- Berkomunikasi secara dua arah dengan backend melalui protokol **MQTT over TLS (MQTTS)**.
 
 ### 2. Komponen Kunci
-*   **TinyUSB (MSC Storage)**: Mengelola deskriptor USB dan protokol Mass Storage agar penyimpanan ESP32 terbaca sebagai drive USB.
-*   **Wi-Fi & Networking**: Menghubungkan ESP32 ke jaringan Wi-Fi (SSID: `Elitech`) dengan dukungan IP Statis atau DHCP.
-*   **MQTT Client**: Berfungsi sebagai jalur kontrol jarak jauh. Mendengarkan topik `ecg1200G/upload` untuk memicu proses transfer data.
-*   **HTTP Client**: Menggunakan metode `POST` dengan format `multipart/form-data` untuk mengirim file ke API server.
-*   **Console REPL**: Antarmuka baris perintah (CLI) melalui UART untuk debugging dan kontrol manual.
+- **TinyUSB (MSC Storage)**: Mengelola deskriptor USB dan protokol Mass Storage.
+- **Wi-Fi & Networking**: Menghubungkan ESP32 ke jaringan Wi-Fi.
+- **MQTT Client**: Jalur kontrol jarak jauh untuk menerima perintah dan mempublikasikan status.
+- **HTTP Client**: Mengirim file ke API server dengan metode `POST` multipart/form-data.
+- **Console REPL**: Antarmuka CLI melalui UART untuk debugging dan kontrol manual.
 
 ### 3. Alur Kerja Perangkat (Workflow)
-1.  **Inisialisasi**: Menyiapkan NVS, Wi-Fi, dan MQTT.
-2.  **Storage Setup**: Menginisialisasi SD Card/SPI Flash dan menyiapkan sistem file FATFS.
-3.  **USB Setup**: Memasang driver TinyUSB. Secara default, penyimpanan diatur dalam mode **Expose** (dapat diakses oleh USB Host/PC).
-4.  **Akses Eksklusif**: Kode ini menangani pembatasan akses. Jika USB Host sedang menggunakan storage, aplikasi ESP32 tidak bisa mengakses file, dan sebaliknya.
-5.  **Proses Upload (Otomatis via MQTT)**:
-    *   Menerima perintah `upload` dari MQTT.
-    *   Melepas akses USB Host (Unmount dari USB).
-    *   Mencari folder `ecg_archive` terbaru dan mencari file `.XML` di dalamnya.
-    *   Mengunggah file tersebut ke `http://192.168.13.156:3000/api/ecg-1200g/upload`.
-    *   Setelah berhasil, menghapus folder archive yang sudah diunggah.
-    *   Mengembalikan akses storage ke USB Host (Expose kembali).
-
-### 4. Perintah Console (CLI Commands)
-Anda dapat berinteraksi dengan perangkat melalui terminal serial menggunakan perintah berikut:
-*   `upload`: Memulai proses pencarian dan pengunggahan file XML secara manual.
-*   `check`: Menampilkan daftar folder `ecg_archive` dan file XML yang tersedia di storage.
-*   `size`: Menampilkan kapasitas penyimpanan yang tersedia.
-*   `status`: Mengecek apakah storage saat ini sedang dikuasai oleh USB Host atau aplikasi.
-*   `mount`: Mengambil alih storage untuk digunakan oleh aplikasi ESP32.
-*   `expose`: Memberikan akses storage kepada USB Host (PC/EKG).
+1. **Inisialisasi**: Menyiapkan NVS, Wi-Fi, dan MQTT.
+2. **Startup Cleanup**: Saat boot, semua file lama di storage dihapus otomatis sebelum di-expose ke USB Host.
+3. **USB Setup**: Storage di-expose ke USB Host (mode Expose) secara default.
+4. **MQTT Connect**: Begitu terhubung, ESP32 langsung mempublikasikan beberapa pesan (lihat bagian MQTT).
+5. **Proses Upload via MQTT**:
+   - Menerima perintah JSON dari topik `iotgateway/{gateway_sn}/upload`.
+   - Mengambil alih storage dari USB Host (otomatis).
+   - Mencari folder `ecg_archive` terbaru, lalu mengunggah **semua** file valid (`.xml`, `.jpg`, `.bmp`) di dalamnya secara berurutan.
+   - Setelah berhasil, menghapus file yang telah terunggah. Folder dihapus jika sudah kosong.
+   - Mengembalikan storage ke USB Host.
 
 ---
 
-## Panduan Penggunaan
+## Konfigurasi Global (Global Variables)
 
-### 1. Koneksi Hardware
-*   Hubungkan ESP32 ke komputer atau mesin EKG melalui port USB (OTG).
-*   ESP32 akan terdeteksi sebagai **USB Mass Storage** (seperti Flash Drive) dengan nama "Example MSC".
+Semua konfigurasi utama terpusat dalam variabel global di bagian atas file `tusb_msc_main.c`. Ubah di satu tempat, berlaku ke seluruh sistem.
 
-### 2. Pengiriman Data (Upload)
-Ada dua cara untuk memicu pengiriman data dari perangkat ke server:
+| Variabel | Nilai Default | Keterangan |
+| :--- | :--- | :--- |
+| `GATEWAY_SN` | `"B0001"` | Serial Number / ID unik perangkat |
+| `MQTT_BROKER_URI` | `"mqtts://dev.samelement.com"` | URI broker MQTT |
+| `MQTT_BROKER_PORT` | `8888` | Port broker MQTT |
+| `MQTT_USERNAME` | `"iotgateway"` | Username autentikasi MQTT |
+| `MQTT_PASSWORD` | `"iotgateway10nice"` | Password autentikasi MQTT |
 
-#### A. Melalui MQTT (Otomatis/Jarak Jauh)
-Untuk memicu proses upload secara remote, kirimkan pesan melalui broker MQTT dengan detail sebagai berikut:
+---
 
-| Parameter | Detail |
+## Topik MQTT
+
+Semua topik menggunakan `gateway_sn` secara dinamis sehingga mendukung banyak perangkat sekaligus.
+
+### A. Publish (ESP32 → Broker)
+
+| Topik | Trigger | Retain | Keterangan |
+| :--- | :--- | :--- | :--- |
+| `iotgateway/{sn}/status/online` | Saat konek & saat putus (LWT) | Ya | Mengirim status online/offline |
+| `iotgateway/{sn}/info` | Saat konek | Ya | Mengirim info firmware & hardware |
+| `iotgateway/{sn}/dongle/function` | Saat konek | Ya | Mengirim IP dan fungsi perangkat |
+| `iotgateway/{sn}/ip` | Saat menerima perintah `get` | Tidak | Membalas permintaan IP address |
+
+#### Payload: `status/online` (Online)
+```json
+{
+  "gateway_sn": "B0001",
+  "data": {
+    "online": true
+  }
+}
+```
+
+#### Payload: `status/online` (Offline — LWT otomatis dari broker jika perangkat mati mendadak)
+```json
+{
+  "gateway_sn": "B0001",
+  "data": {
+    "online": false
+  }
+}
+```
+
+#### Payload: `info`
+```json
+{
+  "gateway_sn": "B0001",
+  "data": {
+    "model": "EcgDongle-01",
+    "firmware_version": "1.1.1",
+    "hardware_revision": "R1.1",
+    "build_date": "2026-05-08"
+  }
+}
+```
+
+#### Payload: `dongle/function`
+```json
+{
+  "gateway_sn": "B0001",
+  "data": {
+    "ip": "192.168.x.x",
+    "device_function": "ecg1200g"
+  }
+}
+```
+
+#### Payload: `ip` (Respons cek IP)
+```json
+{
+  "gateway_sn": "B0001",
+  "data": {
+    "ip": "192.168.x.x"
+  }
+}
+```
+
+---
+
+### B. Subscribe (Broker → ESP32)
+
+| Topik | Payload | Aksi |
+| :--- | :--- | :--- |
+| `iotgateway/{sn}/upload` | JSON dengan `command: "upload"` | Memicu proses upload file ke server |
+| `iotgateway/{sn}/ip/get` | `get` | Memicu ESP32 membalas dengan IP address-nya |
+
+#### Payload: Perintah Upload
+```json
+{
+  "gateway_sn": "B0001",
+  "data": {
+    "command": "upload"
+  }
+}
+```
+
+> **Catatan**: ESP32 memvalidasi bahwa `gateway_sn` di dalam JSON cocok dengan miliknya dan nilai `command` adalah `"upload"` sebelum menjalankan proses.
+
+---
+
+## Format File yang Didukung untuk Upload
+
+| Ekstensi | MIME Type | Keterangan |
+| :--- | :--- | :--- |
+| `.xml` / `.XML` | `application/xml` | Data rekaman EKG (format utama) |
+| `.jpg` / `.JPG` | `image/jpeg` | Gambar JPEG |
+| `.bmp` / `.BMP` | `image/bmp` | Gambar Bitmap |
+
+---
+
+## Perintah Console (CLI Commands)
+
+| Perintah | Keterangan |
 | :--- | :--- |
-| **Topik (Topic)** | `ecg1200G/upload` |
-| **Pesan (Payload)** | `upload` |
-
-**Efek**: ESP32 akan otomatis memutus koneksi USB ke PC/EKG (unmount), mencari folder `ecg_archive` terbaru, mencari file `.XML` di dalamnya, mengunggahnya ke server, menghapus folder tersebut setelah berhasil, dan menyambungkan kembali koneksi USB ke mode *Expose*.
-
-#### B. Melalui Konsol Serial (Manual)
-1.  Buka terminal serial (misal: Monitor di VS Code atau Putty) dengan baudrate **115200**.
-2.  Ketik perintah:
-    ```bash
-    upload
-    ```
-3.  Gunakan perintah `check` untuk melihat daftar folder dan file yang ada di penyimpanan.
-
-### 3. Struktur Folder di Drive USB
-Agar sistem otomatis mengenali file, pastikan struktur folder di dalam drive USB adalah sebagai berikut:
-`D: (Drive ESP32) / ecg_archive / [file_data].XML`
+| `upload` | Memulai proses pencarian dan pengunggahan file secara manual |
+| `check` | Menampilkan daftar folder `ecg_archive` dan semua file valid di storage |
+| `size` | Menampilkan kapasitas penyimpanan yang tersedia |
+| `status` | Mengecek status kepemilikan storage (USB Host vs Aplikasi) |
+| `mount` | Mengambil alih storage untuk digunakan oleh aplikasi |
+| `expose` | Memberikan akses storage kepada USB Host |
 
 ---
 
 ## Konfigurasi Teknis
-*   **Base Path**: `/data`
-*   **Server Target**: `192.168.13.156` (Port 3000)
-*   **MQTT Broker**: `dev.samelement.com` (Port 8883, MQTTS)
-*   **MQTT User**: `iotgateway`
-*   **Vendor ID USB**: `0x303A` (Espressif)
-*   **Product ID USB**: `0x4002`
+
+| Parameter | Nilai |
+| :--- | :--- |
+| **Base Path** | `/data` |
+| **Server Upload** | `http://192.168.13.156:3000/api/ecg-1200g/upload` |
+| **MQTT Broker** | `mqtts://dev.samelement.com:8888` |
+| **Vendor ID USB** | `0x303A` (Espressif) |
+| **Product ID USB** | `0x4002` |
+
+---
 
 ## Persyaratan Perangkat Keras
-*   ESP32-S2 atau ESP32-S3 (memiliki dukungan USB OTG).
-*   Slot SD Card atau Flash eksternal.
-
+- ESP32-S2 atau ESP32-S3 (memiliki dukungan USB OTG).
+- Slot SD Card atau Flash eksternal.

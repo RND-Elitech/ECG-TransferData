@@ -533,35 +533,119 @@ static void background_upload_task(void *pvParameters) {
     vTaskDelete(NULL);
 }
 
+static const char *GATEWAY_SN = "B0001";
+static const char *MQTT_BROKER_URI = "mqtts://dev.samelement.com";
+static const int MQTT_BROKER_PORT = 8888;
+static const char *MQTT_USERNAME = "iotgateway";
+static const char *MQTT_PASSWORD = "iotgateway10nice";
+
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
     esp_mqtt_event_handle_t event = event_data;
 
     switch (event->event_id) {
-        case MQTT_EVENT_CONNECTED:
-            ESP_LOGI(TAG, "Berhasil terhubung ke broker MQTT (mqtts://dev.samelement.com:8883)");
-            esp_mqtt_client_subscribe(mqtt_client, "ecg1200G/upload", 0);
-            int msg_id = esp_mqtt_client_publish(mqtt_client, "ecg1200G/status", "dongleECG1 online", 0, 0, 0);
-            ESP_LOGI(TAG, "Berhasil publish status online ke topik: ecg1200G/status (msg_id=%d)", msg_id);
+        case MQTT_EVENT_CONNECTED: {
+            ESP_LOGI(TAG, "Berhasil terhubung ke broker MQTT (mqtts://dev.samelement.com:8888)");
+            
+            char sub_topic[128];
+            snprintf(sub_topic, sizeof(sub_topic), "iotgateway/%s/upload", GATEWAY_SN);
+            esp_mqtt_client_subscribe(mqtt_client, sub_topic, 0);
+            
+            char sub_ip_topic[128];
+            snprintf(sub_ip_topic, sizeof(sub_ip_topic), "iotgateway/%s/ip/get", GATEWAY_SN);
+            esp_mqtt_client_subscribe(mqtt_client, sub_ip_topic, 0);
+            
+            char pub_topic[128];
+            snprintf(pub_topic, sizeof(pub_topic), "iotgateway/%s/status/online", GATEWAY_SN);
+            char pub_payload[128];
+            snprintf(pub_payload, sizeof(pub_payload), "{\"gateway_sn\":\"%s\",\"data\":{\"online\":true}}", GATEWAY_SN);
+            
+            int msg_id = esp_mqtt_client_publish(mqtt_client, pub_topic, pub_payload, 0, 1, 1);
+            ESP_LOGI(TAG, "Berhasil publish status online ke topik: %s (msg_id=%d)", pub_topic, msg_id);
+            
+            char info_topic[128];
+            snprintf(info_topic, sizeof(info_topic), "iotgateway/%s/info", GATEWAY_SN);
+            char info_payload[256];
+            snprintf(info_payload, sizeof(info_payload), 
+                "{\"gateway_sn\":\"%s\",\"data\":{\"model\":\"EcgDongle-01\",\"firmware_version\":\"1.1.1\",\"hardware_revision\":\"R1.1\",\"build_date\":\"2026-05-08\"}}", 
+                GATEWAY_SN);
+            int info_msg_id = esp_mqtt_client_publish(mqtt_client, info_topic, info_payload, 0, 1, 1);
+            ESP_LOGI(TAG, "Berhasil publish info ke topik: %s (msg_id=%d)", info_topic, info_msg_id);
+            
+            char ip_str[16] = "";
+            esp_netif_ip_info_t ip_info;
+            esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+            if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+                snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
+            }
+            
+            char func_topic[128];
+            snprintf(func_topic, sizeof(func_topic), "iotgateway/%s/dongle/function", GATEWAY_SN);
+            char func_payload[256];
+            snprintf(func_payload, sizeof(func_payload), 
+                "{\"gateway_sn\":\"%s\",\"data\":{\"ip\":\"%s\",\"device_function\":\"ecg1200g\"}}", 
+                GATEWAY_SN, ip_str);
+            int func_msg_id = esp_mqtt_client_publish(mqtt_client, func_topic, func_payload, 0, 1, 1);
+            ESP_LOGI(TAG, "Berhasil publish fungsi ke topik: %s (msg_id=%d)", func_topic, func_msg_id);
+            
             break;
+        }
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "Terputus dari MQTT broker");
             break;
-        case MQTT_EVENT_SUBSCRIBED:
-            ESP_LOGI(TAG, "Berhasil subscribe ke topik: ecg1200G/upload");
+        case MQTT_EVENT_SUBSCRIBED: {
+            ESP_LOGI(TAG, "Berhasil subscribe (msg_id=%d)", event->msg_id);
             break;
-        case MQTT_EVENT_DATA:
+        }
+        case MQTT_EVENT_DATA: {
             ESP_LOGI(TAG, "Menerima pesan di topik %.*s: %.*s", event->topic_len, event->topic, event->data_len, event->data);
-            if (event->topic_len == strlen("ecg1200G/upload") && strncmp(event->topic, "ecg1200G/upload", event->topic_len) == 0) {
-                // Trigger upload
-                if (event->data_len == strlen("upload") && strncmp(event->data, "upload", event->data_len) == 0) {
-                    ESP_LOGI(TAG, "Menerima perintah upload, memulai proses di background...");
-                    xTaskCreate(&background_upload_task, "bg_upload", 8192, NULL, 5, NULL);
+            
+            char sub_topic[128];
+            snprintf(sub_topic, sizeof(sub_topic), "iotgateway/%s/upload", GATEWAY_SN);
+            
+            char sub_ip_topic[128];
+            snprintf(sub_ip_topic, sizeof(sub_ip_topic), "iotgateway/%s/ip/get", GATEWAY_SN);
+            
+            if (event->topic_len == strlen(sub_topic) && strncmp(event->topic, sub_topic, event->topic_len) == 0) {
+                // Parse JSON simple
+                char *data_str = malloc(event->data_len + 1);
+                if (data_str) {
+                    memcpy(data_str, event->data, event->data_len);
+                    data_str[event->data_len] = '\0';
+                    
+                    // Cek apakah payload mengandung gateway_sn ini dan command "upload"
+                    if (strstr(data_str, GATEWAY_SN) && strstr(data_str, "\"command\"") && strstr(data_str, "\"upload\"")) {
+                        ESP_LOGI(TAG, "Menerima perintah upload valid dari JSON, memulai proses di background...");
+                        xTaskCreate(&background_upload_task, "bg_upload", 8192, NULL, 5, NULL);
+                    } else {
+                        ESP_LOGW(TAG, "Payload tidak valid untuk upload. Harus JSON dengan command 'upload' dan SN %s", GATEWAY_SN);
+                    }
+                    free(data_str);
+                }
+            } else if (event->topic_len == strlen(sub_ip_topic) && strncmp(event->topic, sub_ip_topic, event->topic_len) == 0) {
+                // Trigger cek IP
+                if (event->data_len == strlen("get") && strncmp(event->data, "get", event->data_len) == 0) {
+                    esp_netif_ip_info_t ip_info;
+                    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+                    if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+                        char pub_ip_topic[128];
+                        snprintf(pub_ip_topic, sizeof(pub_ip_topic), "iotgateway/%s/ip", GATEWAY_SN);
+                        
+                        char pub_ip_payload[256];
+                        snprintf(pub_ip_payload, sizeof(pub_ip_payload), 
+                            "{\"gateway_sn\":\"%s\",\"data\":{\"ip\":\"" IPSTR "\"}}", GATEWAY_SN, IP2STR(&ip_info.ip));
+                            
+                        int msg_id = esp_mqtt_client_publish(mqtt_client, pub_ip_topic, pub_ip_payload, 0, 1, 0);
+                        ESP_LOGI(TAG, "Berhasil publish IP ke topik: %s (msg_id=%d)", pub_ip_topic, msg_id);
+                    } else {
+                        ESP_LOGE(TAG, "Gagal mendapatkan IP address");
+                    }
                 } else {
-                    ESP_LOGW(TAG, "Payload tidak valid, abaikan. Harus 'upload'");
+                    ESP_LOGW(TAG, "Payload tidak valid untuk get IP, abaikan. Harus 'get'");
                 }
             }
             break;
+        }
         default:
             ESP_LOGI(TAG, "Event MQTT lainnya: %d", event->event_id);
             break;
@@ -570,15 +654,30 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
 static void mqtt_app_start(void)
 {
+    static char lwt_topic[128];
+    snprintf(lwt_topic, sizeof(lwt_topic), "iotgateway/%s/status/online", GATEWAY_SN);
+    
+    static char lwt_payload[128];
+    snprintf(lwt_payload, sizeof(lwt_payload), "{\"gateway_sn\":\"%s\",\"data\":{\"online\":false}}", GATEWAY_SN);
+
     esp_mqtt_client_config_t mqtt_cfg = {
         .broker = {
-            .address.uri = "mqtts://dev.samelement.com",
-            .address.port = 8888,
+            .address.uri = MQTT_BROKER_URI,
+            .address.port = MQTT_BROKER_PORT,
             .verification.crt_bundle_attach = esp_crt_bundle_attach,
         },
         .credentials = {
-            .username = "iotgateway",
-            .authentication.password = "iotgateway10nice",
+            .username = MQTT_USERNAME,
+            .authentication.password = MQTT_PASSWORD,
+        },
+        .session = {
+            .last_will = {
+                .topic = lwt_topic,
+                .msg = lwt_payload,
+                .msg_len = 0,
+                .qos = 1,
+                .retain = 1
+            }
         },
         .task = {
             .stack_size = 10240, // Tingkatkan ukuran stack ke 10KB
