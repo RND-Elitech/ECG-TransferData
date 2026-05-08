@@ -2,6 +2,7 @@
 #include <dirent.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include "sdkconfig.h"
 #include "esp_console.h"
 #include "esp_check.h"
@@ -113,6 +114,7 @@ static int console_mount(int argc, char **argv);
 static void storage_mount_changed_cb(tinyusb_msc_event_t *event);
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
 static void _mount(void); // Ditambahkan untuk mengatasi implicit declaration
+static void cleanup_initial_storage(void);
 
 /* Command structure */
 const esp_console_cmd_t cmds[] = {
@@ -154,13 +156,8 @@ const esp_console_cmd_t cmds[] = {
     }
 };
 
-static int console_upload(int argc, char **argv)
+static int console_upload_core(int argc, char **argv)
 {
-    if (tinyusb_msc_storage_in_use_by_usb_host()) {
-        ESP_LOGE(TAG, "Storage sedang digunakan oleh host USB. Tidak bisa mengunggah file.");
-        return -1;
-    }
-
     // Cari folder ecg_archive
     DIR *dir = opendir(BASE_PATH);
     if (!dir) {
@@ -204,185 +201,221 @@ static int console_upload(int argc, char **argv)
         return -1;
     }
 
-    char xml_file[256] = "";
+    int success_count = 0;
+    int fail_count = 0;
+    bool found_xml = false;
+
     while ((entry = readdir(subdir)) != NULL) {
         if (entry->d_type == DT_REG && strstr(entry->d_name, ".XML")) {
+            found_xml = true;
+            char xml_file[256];
             strcpy(xml_file, entry->d_name);
-            break; // Ambil file XML pertama
+
+            // Cek file
+            char file_path[768];
+            snprintf(file_path, sizeof(file_path), "%s/%s", folder_path, xml_file);
+
+            FILE *fp = fopen(file_path, "rb");
+            if (!fp) {
+                ESP_LOGE(TAG, "Gagal membuka file: %s", file_path);
+                fail_count++;
+                continue;
+            }
+
+            // Dapatkan ukuran file
+            fseek(fp, 0, SEEK_END);
+            size_t file_size = ftell(fp);
+            fseek(fp, 0, SEEK_SET);
+
+            // Validasi ukuran file
+            if (file_size < 10) {
+                ESP_LOGE(TAG, "File terlalu kecil: %s", file_path);
+                fclose(fp);
+                fail_count++;
+                continue;
+            }
+
+            // Boundary untuk multipart
+            const char *boundary = "----ESP32FormBoundary123456";
+
+            // Susun header multipart
+            char multipart_header[512];
+            snprintf(multipart_header, sizeof(multipart_header),
+                     "--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\nContent-Type: application/xml\r\n\r\n",
+                     boundary, xml_file);
+
+            // Susun footer multipart
+            char multipart_footer[64]; // Diperbesar dari 32 ke 64 untuk menampung string lengkap
+            snprintf(multipart_footer, sizeof(multipart_footer), "\r\n--%s--\r\n", boundary);
+
+            // Total panjang konten untuk multipart
+            size_t total_content_length = strlen(multipart_header) + file_size + strlen(multipart_footer);
+
+            // Konfigurasi HTTP client
+            esp_http_client_config_t config = {
+                .url = "http://192.168.13.156:3000/api/ecg-1200g/upload",
+                .method = HTTP_METHOD_POST,
+                .timeout_ms = 30000,
+                .buffer_size = 2048,
+            };
+            esp_http_client_handle_t client = esp_http_client_init(&config);
+            if (!client) {
+                ESP_LOGE(TAG, "Gagal inisialisasi HTTP client");
+                fclose(fp);
+                fail_count++;
+                continue;
+            }
+
+            // Set header Content-Type
+            char content_type[128];
+            snprintf(content_type, sizeof(content_type), "multipart/form-data; boundary=%s", boundary);
+            esp_http_client_set_header(client, "Content-Type", content_type);
+
+            // Buka koneksi dengan ukuran diketahui
+            esp_err_t err = esp_http_client_open(client, total_content_length);
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "Gagal membuka HTTP: %s", esp_err_to_name(err));
+                esp_http_client_cleanup(client);
+                fclose(fp);
+                fail_count++;
+                continue;
+            }
+
+            ESP_LOGI(TAG, "Mengunggah file: %s (%d bytes) dari folder: %s", xml_file, file_size, latest_folder);
+
+            // Kirim header multipart
+            if (esp_http_client_write(client, multipart_header, strlen(multipart_header)) < 0) {
+                ESP_LOGE(TAG, "Gagal menulis header multipart");
+                esp_http_client_close(client);
+                esp_http_client_cleanup(client);
+                fclose(fp);
+                fail_count++;
+                continue;
+            }
+
+            // Kirim isi file
+            uint8_t buffer[1024];
+            size_t total_read = 0;
+            bool write_failed = false;
+            while (total_read < file_size) {
+                size_t to_read = file_size - total_read < sizeof(buffer) ? file_size - total_read : sizeof(buffer);
+                size_t read_bytes = fread(buffer, 1, to_read, fp);
+                if (read_bytes <= 0) {
+                    ESP_LOGE(TAG, "Gagal membaca file");
+                    write_failed = true;
+                    break;
+                }
+                if (esp_http_client_write(client, (char *)buffer, read_bytes) < 0) {
+                    ESP_LOGE(TAG, "Gagal menulis data file");
+                    write_failed = true;
+                    break;
+                }
+                total_read += read_bytes;
+            }
+
+            if (write_failed) {
+                esp_http_client_close(client);
+                esp_http_client_cleanup(client);
+                fclose(fp);
+                fail_count++;
+                continue;
+            }
+
+            // Kirim footer multipart
+            if (esp_http_client_write(client, multipart_footer, strlen(multipart_footer)) < 0) {
+                ESP_LOGE(TAG, "Gagal menulis footer multipart");
+                esp_http_client_close(client);
+                esp_http_client_cleanup(client);
+                fclose(fp);
+                fail_count++;
+                continue;
+            }
+
+            // Dapatkan respons
+            int status = esp_http_client_fetch_headers(client);
+            if (status < 0) {
+                ESP_LOGE(TAG, "Gagal mengambil header respons");
+                esp_http_client_close(client);
+                esp_http_client_cleanup(client);
+                fclose(fp);
+                fail_count++;
+                continue;
+            }
+
+            int response_content_length = esp_http_client_get_content_length(client);
+            int status_code = esp_http_client_get_status_code(client);
+            ESP_LOGI(TAG, "Status HTTP: %d, Content-Length: %d", status_code, response_content_length);
+
+            if (response_content_length > 0) {
+                char *response_buffer = malloc(response_content_length + 1);
+                if (response_buffer) {
+                    int read_len = esp_http_client_read_response(client, response_buffer, response_content_length);
+                    if (read_len > 0) {
+                        response_buffer[read_len] = '\0';
+                        ESP_LOGI(TAG, "Respons dari server: %s", response_buffer);
+                    } else {
+                        ESP_LOGE(TAG, "Gagal membaca respons dari server, read_len: %d", read_len);
+                    }
+                    free(response_buffer);
+                } else {
+                    ESP_LOGE(TAG, "Gagal alokasi memori untuk response_buffer");
+                }
+            } else {
+                ESP_LOGI(TAG, "Tidak ada body respons dari server (Content-Length: 0)");
+            }
+
+            if (status_code == 200 || status_code == 201) {
+                ESP_LOGI(TAG, "Upload berhasil! Menghapus file: %s", file_path);
+                unlink(file_path);
+                success_count++;
+            } else {
+                ESP_LOGE(TAG, "Upload gagal dengan status %d", status_code);
+                fail_count++;
+            }
+
+            esp_http_client_close(client);
+            esp_http_client_cleanup(client);
+            fclose(fp);
         }
     }
     closedir(subdir);
 
-    if (strlen(xml_file) == 0) {
+    if (!found_xml) {
         ESP_LOGE(TAG, "Tidak ditemukan file XML di %s", folder_path);
         return -1;
     }
 
-    // Cek file
-    char file_path[768];
-    snprintf(file_path, sizeof(file_path), "%s/%s", folder_path, xml_file);
-
-    FILE *fp = fopen(file_path, "rb");
-    if (!fp) {
-        ESP_LOGE(TAG, "Gagal membuka file: %s", file_path);
-        return -1;
-    }
-
-    // Dapatkan ukuran file
-    fseek(fp, 0, SEEK_END);
-    size_t file_size = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-
-    // Validasi ukuran file
-    if (file_size < 10) {
-        ESP_LOGE(TAG, "File terlalu kecil: %s", file_path);
-        fclose(fp);
-        return -1;
-    }
-
-    // Boundary untuk multipart
-    const char *boundary = "----ESP32FormBoundary123456";
-
-    // Susun header multipart
-    char multipart_header[512];
-    snprintf(multipart_header, sizeof(multipart_header),
-             "--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\nContent-Type: application/xml\r\n\r\n",
-             boundary, xml_file);
-
-    // Susun footer multipart
-    char multipart_footer[64]; // Diperbesar dari 32 ke 64 untuk menampung string lengkap
-    snprintf(multipart_footer, sizeof(multipart_footer), "\r\n--%s--\r\n", boundary);
-
-    // Total panjang konten untuk multipart
-    size_t total_content_length = strlen(multipart_header) + file_size + strlen(multipart_footer);
-
-    // Konfigurasi HTTP client
-    esp_http_client_config_t config = {
-        .url = "http://192.168.13.156:3000/api/ecg-1200g/upload",
-        .method = HTTP_METHOD_POST,
-        .timeout_ms = 30000,
-        .buffer_size = 2048,
-    };
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    if (!client) {
-        ESP_LOGE(TAG, "Gagal inisialisasi HTTP client");
-        fclose(fp);
-        return -1;
-    }
-
-    // Set header Content-Type
-    char content_type[128];
-    snprintf(content_type, sizeof(content_type), "multipart/form-data; boundary=%s", boundary);
-    esp_http_client_set_header(client, "Content-Type", content_type);
-
-    // Buka koneksi dengan ukuran diketahui
-    esp_err_t err = esp_http_client_open(client, total_content_length);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Gagal membuka HTTP: %s", esp_err_to_name(err));
-        esp_http_client_cleanup(client);
-        fclose(fp);
-        return -1;
-    }
-
-    ESP_LOGI(TAG, "Mengunggah file: %s (%d bytes) dari folder: %s", xml_file, file_size, latest_folder);
-
-    // Kirim header multipart
-    if (esp_http_client_write(client, multipart_header, strlen(multipart_header)) < 0) {
-        ESP_LOGE(TAG, "Gagal menulis header multipart");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        fclose(fp);
-        return -1;
-    }
-
-    // Kirim isi file
-    uint8_t buffer[1024];
-    size_t total_read = 0;
-    while (total_read < file_size) {
-        size_t to_read = file_size - total_read < sizeof(buffer) ? file_size - total_read : sizeof(buffer);
-        size_t read_bytes = fread(buffer, 1, to_read, fp);
-        if (read_bytes <= 0) {
-            ESP_LOGE(TAG, "Gagal membaca file");
-            esp_http_client_close(client);
-            esp_http_client_cleanup(client);
-            fclose(fp);
-            return -1;
-        }
-        if (esp_http_client_write(client, (char *)buffer, read_bytes) < 0) {
-            ESP_LOGE(TAG, "Gagal menulis data file");
-            esp_http_client_close(client);
-            esp_http_client_cleanup(client);
-            fclose(fp);
-            return -1;
-        }
-        total_read += read_bytes;
-    }
-
-    // Kirim footer multipart
-    if (esp_http_client_write(client, multipart_footer, strlen(multipart_footer)) < 0) {
-        ESP_LOGE(TAG, "Gagal menulis footer multipart");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        fclose(fp);
-        return -1;
-    }
-
-    // Dapatkan respons
-    int status = esp_http_client_fetch_headers(client);
-    if (status < 0) {
-        ESP_LOGE(TAG, "Gagal mengambil header respons");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        fclose(fp);
-        return -1;
-    }
-
-    int response_content_length = esp_http_client_get_content_length(client);
-    ESP_LOGI(TAG, "Status HTTP: %d, Content-Length: %d", status, response_content_length);
-
-    if (status == 200) {
-        ESP_LOGI(TAG, "Upload berhasil!");
-        if (response_content_length > 0) {
-            char *response_buffer = malloc(response_content_length + 1);
-            if (response_buffer) {
-                int read_len = esp_http_client_read_response(client, response_buffer, response_content_length);
-                if (read_len > 0) {
-                    response_buffer[read_len] = '\0';
-                    ESP_LOGI(TAG, "Respons dari server: %s", response_buffer);
-                } else {
-                    ESP_LOGE(TAG, "Gagal membaca respons dari server, read_len: %d", read_len);
-                }
-                free(response_buffer);
-            } else {
-                ESP_LOGE(TAG, "Gagal alokasi memori untuk response_buffer");
-            }
-        } else {
-            ESP_LOGI(TAG, "Tidak ada body respons dari server (Content-Length: 0)");
-        }
+    if (success_count > 0 && fail_count == 0) {
+        ESP_LOGI(TAG, "Semua file (%d) berhasil diupload, menghapus folder %s...", success_count, folder_path);
+        rmdir(folder_path);
     } else {
-        if (response_content_length > 0) {
-            char *response_buffer = malloc(response_content_length + 1);
-            if (response_buffer) {
-                int read_len = esp_http_client_read_response(client, response_buffer, response_content_length);
-                if (read_len > 0) {
-                    response_buffer[read_len] = '\0';
-                    ESP_LOGI(TAG, "Respons dari server: %s", response_buffer);
-                } else {
-                    ESP_LOGE(TAG, "Gagal membaca respons dari server, read_len: %d", read_len);
-                }
-                free(response_buffer);
-            } else {
-                ESP_LOGE(TAG, "Gagal alokasi memori untuk response_buffer");
-            }
-        } else {
-            ESP_LOGI(TAG, "Tidak ada body respons dari server (Content-Length: 0)");
-        }
+        ESP_LOGW(TAG, "Selesai. Sukses: %d, Gagal: %d", success_count, fail_count);
     }
 
-    esp_http_client_close(client);
-    esp_http_client_cleanup(client);
-    fclose(fp);
-    return (status == 200) ? 0 : -1;
+    return (fail_count == 0) ? 0 : -1;
+}
+
+static int console_upload(int argc, char **argv)
+{
+    bool needs_unmount = false;
+
+    if (tinyusb_msc_storage_in_use_by_usb_host()) {
+        ESP_LOGI(TAG, "Storage dipakai USB. Mengambil alih untuk upload...");
+        if (tinyusb_msc_storage_mount(BASE_PATH) != ESP_OK) {
+            ESP_LOGE(TAG, "Gagal mengambil alih storage.");
+            return -1;
+        }
+        needs_unmount = true;
+    }
+
+    int ret = console_upload_core(argc, argv);
+
+    if (needs_unmount) {
+        ESP_LOGI(TAG, "Upload selesai. Mengembalikan storage ke USB Host...");
+        tinyusb_msc_storage_unmount();
+    }
+
+    return ret;
 }
 
 static int console_check(int argc, char **argv)
@@ -478,85 +511,34 @@ static int console_mount(int argc, char **argv)
     return 0;
 }
 
+static void background_upload_task(void *pvParameters) {
+    ESP_LOGI(TAG, "Menjalankan proses upload dari background task...");
+    console_upload(0, NULL);
+    vTaskDelete(NULL);
+}
+
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
     esp_mqtt_event_handle_t event = event_data;
-    char full_path[512]; // Deklarasi di awal fungsi
 
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
-            ESP_LOGI(TAG, "Terhubung ke MQTT broker");
+            ESP_LOGI(TAG, "Berhasil terhubung ke broker MQTT (mqtts://dev.samelement.com:8883)");
             esp_mqtt_client_subscribe(mqtt_client, "ecg1200G/upload", 0);
             break;
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "Terputus dari MQTT broker");
             break;
         case MQTT_EVENT_SUBSCRIBED:
-            ESP_LOGI(TAG, "Berhasil subscribe ke topik %.*s", event->topic_len, event->topic);
+            ESP_LOGI(TAG, "Berhasil subscribe ke topik: ecg1200G/upload");
             break;
         case MQTT_EVENT_DATA:
             ESP_LOGI(TAG, "Menerima pesan di topik %.*s: %.*s", event->topic_len, event->topic, event->data_len, event->data);
             if (event->topic_len == strlen("ecg1200G/upload") && strncmp(event->topic, "ecg1200G/upload", event->topic_len) == 0) {
                 // Trigger upload
                 if (event->data_len == strlen("upload") && strncmp(event->data, "upload", event->data_len) == 0) {
-                    ESP_LOGI(TAG, "Menerima perintah upload, memulai proses...");
-                    ESP_ERROR_CHECK(tinyusb_msc_storage_mount(BASE_PATH)); // Mount storage
-                    console_upload(0, NULL); // Jalankan upload
-                    vTaskDelay(pdMS_TO_TICKS(1000)); // Tunggu proses selesai
-
-                    // Hapus folder ecg_archive dan isinya di dalam BASE_PATH
-                    ESP_LOGI(TAG, "Menghapus folder %s/ecg_archive dan isinya...", BASE_PATH);
-                    char path[64];
-                    snprintf(path, sizeof(path), "%s/ecg_archive", BASE_PATH);
-                    DIR *dir = opendir(path);
-                    if (dir != NULL) {
-                        struct dirent *entry;
-                        while ((entry = readdir(dir)) != NULL) {
-                            snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
-                            if (entry->d_type == DT_DIR) {
-                                if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-                                    ESP_LOGI(TAG, "Menghapus subdirektori: %s", full_path);
-                                    rmdir(full_path); // Hapus subdirektori
-                                }
-                            } else {
-                                ESP_LOGI(TAG, "Menghapus file: %s", full_path);
-                                unlink(full_path); // Hapus file
-                            }
-                        }
-                        closedir(dir);
-                        ESP_LOGI(TAG, "Menghapus folder utama: %s", path);
-                        rmdir(path); // Hapus folder utama setelah isinya kosong
-                        ESP_LOGI(TAG, "Folder %s/ecg_archive berhasil dihapus", BASE_PATH);
-                    } else {
-                        ESP_LOGE(TAG, "Gagal membuka folder %s, errno: %d", path, errno);
-                        // Coba remount untuk memastikan path valid
-                        ESP_ERROR_CHECK(tinyusb_msc_storage_mount(BASE_PATH));
-                        dir = opendir(path);
-                        if (dir != NULL) {
-                            ESP_LOGI(TAG, "Remount berhasil, melanjutkan penghapusan...");
-                            struct dirent *entry;
-                            while ((entry = readdir(dir)) != NULL) {
-                                snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
-                                if (entry->d_type == DT_DIR) {
-                                    if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-                                        ESP_LOGI(TAG, "Menghapus subdirektori: %s", full_path);
-                                        rmdir(full_path);
-                                    }
-                                } else {
-                                    ESP_LOGI(TAG, "Menghapus file: %s", full_path);
-                                    unlink(full_path);
-                                }
-                            }
-                            closedir(dir);
-                            rmdir(path);
-                            ESP_LOGI(TAG, "Folder %s/ecg_archive berhasil dihapus setelah remount", BASE_PATH);
-                        } else {
-                            ESP_LOGE(TAG, "Remount gagal, folder tetap tidak bisa dihapus");
-                        }
-                    }
-
-                    ESP_ERROR_CHECK(tinyusb_msc_storage_unmount()); // Unmount (expose) kembali
-                    ESP_LOGI(TAG, "Proses upload selesai, kembali ke mode expose");
+                    ESP_LOGI(TAG, "Menerima perintah upload, memulai proses di background...");
+                    xTaskCreate(&background_upload_task, "bg_upload", 8192, NULL, 5, NULL);
                 } else {
                     ESP_LOGW(TAG, "Payload tidak valid, abaikan. Harus 'upload'");
                 }
@@ -573,7 +555,7 @@ static void mqtt_app_start(void)
     esp_mqtt_client_config_t mqtt_cfg = {
         .broker = {
             .address.uri = "mqtts://dev.samelement.com",
-            .address.port = 8883,
+            .address.port = 8888,
             .verification.crt_bundle_attach = esp_crt_bundle_attach,
         },
         .credentials = {
@@ -606,6 +588,45 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG, "Wi-Fi terhubung, IP: " IPSTR, IP2STR(&event->ip_info.ip));
+    }
+}
+
+static void cleanup_initial_storage(void)
+{
+    ESP_LOGI(TAG, "Membersihkan direktori penyimpanan awal...");
+    DIR *dir = opendir(BASE_PATH);
+    if (dir != NULL) {
+        struct dirent *entry;
+        char full_path[512];
+        while ((entry = readdir(dir)) != NULL) {
+            if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+                snprintf(full_path, sizeof(full_path), "%s/%s", BASE_PATH, entry->d_name);
+                if (entry->d_type == DT_DIR) {
+                    DIR *subdir = opendir(full_path);
+                    if (subdir != NULL) {
+                        struct dirent *subentry;
+                        char sub_path[768];
+                        while ((subentry = readdir(subdir)) != NULL) {
+                            if (strcmp(subentry->d_name, ".") != 0 && strcmp(subentry->d_name, "..") != 0) {
+                                snprintf(sub_path, sizeof(sub_path), "%s/%s", full_path, subentry->d_name);
+                                ESP_LOGI(TAG, "Menghapus file lama: %s", sub_path);
+                                unlink(sub_path);
+                            }
+                        }
+                        closedir(subdir);
+                    }
+                    ESP_LOGI(TAG, "Menghapus folder lama: %s", full_path);
+                    rmdir(full_path);
+                } else {
+                    ESP_LOGI(TAG, "Menghapus file lama: %s", full_path);
+                    unlink(full_path);
+                }
+            }
+        }
+        closedir(dir);
+        ESP_LOGI(TAG, "Pembersihan awal selesai.");
+    } else {
+        ESP_LOGW(TAG, "Gagal membuka direktori untuk pembersihan.");
     }
 }
 
@@ -829,6 +850,10 @@ void app_main(void)
 
     // Mount storage (akan di-unmount kembali di bawah)
     _mount();
+
+    // Pembersihan direktori saat baru dicolokkan (awal)
+    cleanup_initial_storage();
+
     // Pindahkan unmount setelah inisialisasi TinyUSB
     ESP_LOGI(TAG, "Mengatur mode default expose...");
     ESP_ERROR_CHECK(tinyusb_msc_storage_unmount());
