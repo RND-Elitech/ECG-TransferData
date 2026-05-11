@@ -67,8 +67,8 @@ static int _cmd_size(int argc, char **argv)
         ESP_LOGE(TAG, "Storage sedang dipakai USB Host");
         return -1;
     }
-    uint32_t sec_count = tinyusb_msc_storage_get_sector_count();
-    uint32_t sec_size  = tinyusb_msc_storage_get_sector_size();
+    uint32_t sec_count = storage_manager_get_sector_count();
+    uint32_t sec_size  = storage_manager_get_sector_size();
     printf("Kapasitas: %llu MB\n",
            ((uint64_t)sec_count) * sec_size / (1024 * 1024));
     return 0;

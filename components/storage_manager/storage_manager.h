@@ -1,6 +1,8 @@
 #pragma once
 
 #include "esp_err.h"
+#include <stdbool.h>
+#include <stdint.h>
 
 /**
  * @brief Inisialisasi media penyimpanan (SPI Flash atau SDMMC).
@@ -38,3 +40,6 @@ void storage_manager_cleanup(void);
  * @return true jika sedang di-expose ke USB Host
  */
 bool storage_manager_in_use_by_usb(void);
+
+uint32_t storage_manager_get_sector_count(void);
+uint32_t storage_manager_get_sector_size(void);

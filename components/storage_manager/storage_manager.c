@@ -252,3 +252,13 @@ void storage_manager_cleanup(void)
     closedir(dir);
     ESP_LOGI(TAG, "Pembersihan storage selesai");
 }
+
+uint32_t storage_manager_get_sector_count(void)
+{
+    return tinyusb_msc_storage_get_sector_count();
+}
+
+uint32_t storage_manager_get_sector_size(void)
+{
+    return tinyusb_msc_storage_get_sector_size();
+}
