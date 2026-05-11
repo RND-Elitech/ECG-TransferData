@@ -237,7 +237,7 @@ esp_err_t storage_manager_format(void)
     esp_vfs_fat_mount_config_t mount_config = {
         .format_if_mount_failed = true,
         .max_files = 5,
-        .allocation_unit_size = 512
+        .allocation_unit_size = 4096
     };
     esp_err_t err = esp_vfs_fat_spiflash_format_cfg_rw_wl(STORAGE_BASE_PATH, "storage", &mount_config);
 #else
