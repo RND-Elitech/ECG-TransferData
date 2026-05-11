@@ -1,0 +1,6 @@
+idf_component_register(
+    SRCS "uploader.c"
+    INCLUDE_DIRS "."
+    REQUIRES storage_manager mqtt_manager
+    PRIV_REQUIRES esp_http_client freertos
+)

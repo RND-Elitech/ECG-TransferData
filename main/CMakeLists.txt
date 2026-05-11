@@ -1,11 +1,6 @@
-set(priv_requires fatfs console)
-
-if(CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH)
-    list(APPEND priv_requires wear_levelling esp_partition)
-endif()
-
 idf_component_register(
-    SRCS "tusb_msc_main.c"
-    INCLUDE_DIRS .
-    PRIV_REQUIRES "${priv_requires}" "esp_wifi" "nvs_flash" "esp_event" "esp_http_client"  "esp_netif" "esp_timer" "mqtt"
+    SRCS "app_main.c"
+    INCLUDE_DIRS "."
+    REQUIRES wifi_manager mqtt_manager storage_manager uploader console_cmd
+    PRIV_REQUIRES nvs_flash esp_netif esp_event
 )
