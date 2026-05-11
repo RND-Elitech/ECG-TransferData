@@ -1,18 +1,21 @@
+// storage_manager.c
 #include "storage_manager.h"
 
-#include <string.h>
-#include <dirent.h>
-#include <unistd.h>
-#include "esp_log.h"
 #include "esp_check.h"
+#include "esp_log.h"
+#include "esp_vfs_fat.h"
+#include "sdkconfig.h"
 #include "tinyusb.h"
 #include "tusb_msc_storage.h"
-#include "sdkconfig.h"
-#include "esp_vfs_fat.h"
+#include <dirent.h>
+#include <string.h>
+#include <unistd.h>
+
 
 #ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
-#include "wear_levelling.h"
 #include "esp_partition.h"
+#include "wear_levelling.h"
+
 #else
 #include "diskio_impl.h"
 #include "diskio_sdmmc.h"
@@ -26,31 +29,31 @@ static const char *TAG = "storage_manager";
 #define STORAGE_BASE_PATH "/data"
 
 /* ─── Descriptor USB (MSC) ─── */
-#define EPNUM_MSC           1
+#define EPNUM_MSC 1
 #define TUSB_DESC_TOTAL_LEN (TUD_CONFIG_DESC_LEN + TUD_MSC_DESC_LEN)
 
 enum { ITF_NUM_MSC = 0, ITF_NUM_TOTAL };
 enum {
-    EDPT_CTRL_OUT = 0x00,
-    EDPT_CTRL_IN  = 0x80,
-    EDPT_MSC_OUT  = 0x01,
-    EDPT_MSC_IN   = 0x81,
+  EDPT_CTRL_OUT = 0x00,
+  EDPT_CTRL_IN = 0x80,
+  EDPT_MSC_OUT = 0x01,
+  EDPT_MSC_IN = 0x81,
 };
 
 static tusb_desc_device_t s_device_desc = {
-    .bLength            = sizeof(tusb_desc_device_t),
-    .bDescriptorType    = TUSB_DESC_DEVICE,
-    .bcdUSB             = 0x0200,
-    .bDeviceClass       = TUSB_CLASS_MISC,
-    .bDeviceSubClass    = MISC_SUBCLASS_COMMON,
-    .bDeviceProtocol    = MISC_PROTOCOL_IAD,
-    .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
-    .idVendor           = 0x303A,  // Espressif VID
-    .idProduct          = 0x4002,
-    .bcdDevice          = 0x100,
-    .iManufacturer      = 0x01,
-    .iProduct           = 0x02,
-    .iSerialNumber      = 0x03,
+    .bLength = sizeof(tusb_desc_device_t),
+    .bDescriptorType = TUSB_DESC_DEVICE,
+    .bcdUSB = 0x0200,
+    .bDeviceClass = TUSB_CLASS_MISC,
+    .bDeviceSubClass = MISC_SUBCLASS_COMMON,
+    .bDeviceProtocol = MISC_PROTOCOL_IAD,
+    .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
+    .idVendor = 0x303A, // Espressif VID
+    .idProduct = 0x4002,
+    .bcdDevice = 0x100,
+    .iManufacturer = 0x01,
+    .iProduct = 0x02,
+    .iSerialNumber = 0x03,
     .bNumConfigurations = 0x01,
 };
 
@@ -62,15 +65,15 @@ static uint8_t const s_fs_desc[] = {
 
 #if (TUD_OPT_HIGH_SPEED)
 static const tusb_desc_device_qualifier_t s_qualifier = {
-    .bLength            = sizeof(tusb_desc_device_qualifier_t),
-    .bDescriptorType    = TUSB_DESC_DEVICE_QUALIFIER,
-    .bcdUSB             = 0x0200,
-    .bDeviceClass       = TUSB_CLASS_MISC,
-    .bDeviceSubClass    = MISC_SUBCLASS_COMMON,
-    .bDeviceProtocol    = MISC_PROTOCOL_IAD,
-    .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
+    .bLength = sizeof(tusb_desc_device_qualifier_t),
+    .bDescriptorType = TUSB_DESC_DEVICE_QUALIFIER,
+    .bcdUSB = 0x0200,
+    .bDeviceClass = TUSB_CLASS_MISC,
+    .bDeviceSubClass = MISC_SUBCLASS_COMMON,
+    .bDeviceProtocol = MISC_PROTOCOL_IAD,
+    .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
     .bNumConfigurations = 0x01,
-    .bReserved          = 0,
+    .bReserved = 0,
 };
 static uint8_t const s_hs_desc[] = {
     TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, TUSB_DESC_TOTAL_LEN,
@@ -80,190 +83,181 @@ static uint8_t const s_hs_desc[] = {
 #endif
 
 static char const *s_string_desc[] = {
-    (const char[]){ 0x09, 0x04 },  // 0: English
-    "Espressif",                    // 1: Manufacturer
-    "ECG Dongle",                   // 2: Product
-    "ECG-B0001",                    // 3: Serial
-    "ECG MSC",                      // 4: MSC Interface
+    (const char[]){0x09, 0x04}, // 0: English
+    "Espressif",                // 1: Manufacturer
+    "ECG Dongle",               // 2: Product
+    "ECG-B0001",                // 3: Serial
+    "ECG MSC",                  // 4: MSC Interface
 };
 
 /* ─── Callback mount changed ─── */
-static void _on_mount_changed(tinyusb_msc_event_t *event)
-{
-    ESP_LOGI(TAG, "Storage mounted to app: %s",
-             event->mount_changed_data.is_mounted ? "Ya" : "Tidak");
+static void _on_mount_changed(tinyusb_msc_event_t *event) {
+  ESP_LOGI(TAG, "Storage mounted to app: %s",
+           event->mount_changed_data.is_mounted ? "Ya" : "Tidak");
 }
 
 /* ─── Init media penyimpanan ─── */
 #ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
-static esp_err_t _init_spiflash(void)
-{
-    static wl_handle_t wl_handle = WL_INVALID_HANDLE;
-    const esp_partition_t *part = esp_partition_find_first(
-        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, NULL);
-    if (!part) {
-        ESP_LOGE(TAG, "Partisi FAT tidak ditemukan");
-        return ESP_ERR_NOT_FOUND;
-    }
-    ESP_RETURN_ON_ERROR(wl_mount(part, &wl_handle), TAG, "wl_mount gagal");
+static esp_err_t _init_spiflash(void) {
+  static wl_handle_t wl_handle = WL_INVALID_HANDLE;
+  const esp_partition_t *part = esp_partition_find_first(
+      ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, NULL);
+  if (!part) {
+    ESP_LOGE(TAG, "Partisi FAT tidak ditemukan");
+    return ESP_ERR_NOT_FOUND;
+  }
+  ESP_RETURN_ON_ERROR(wl_mount(part, &wl_handle), TAG, "wl_mount gagal");
 
-    const tinyusb_msc_spiflash_config_t cfg = {
-        .wl_handle              = wl_handle,
-        .callback_mount_changed = _on_mount_changed,
-        .mount_config.max_files = 5,
-        .mount_config.format_if_mount_failed = true,
-        .mount_config.allocation_unit_size = 512,
-    };
-    return tinyusb_msc_storage_init_spiflash(&cfg);
+  const tinyusb_msc_spiflash_config_t cfg = {
+      .wl_handle = wl_handle,
+      .callback_mount_changed = _on_mount_changed,
+      .mount_config.max_files = 5,
+      .mount_config.format_if_mount_failed = true,
+      .mount_config.allocation_unit_size = 512,
+  };
+  return tinyusb_msc_storage_init_spiflash(&cfg);
 }
 #else
-static esp_err_t _init_sdmmc(void)
-{
-    static sdmmc_card_t *card = NULL;
-    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+static esp_err_t _init_sdmmc(void) {
+  static sdmmc_card_t *card = NULL;
+  sdmmc_host_t host = SDMMC_HOST_DEFAULT();
 
 #if CONFIG_EXAMPLE_SD_PWR_CTRL_LDO_INTERNAL_IO
-    sd_pwr_ctrl_ldo_config_t ldo_cfg = {
-        .ldo_chan_id = CONFIG_EXAMPLE_SD_PWR_CTRL_LDO_IO_ID,
-    };
-    sd_pwr_ctrl_handle_t pwr = NULL;
-    ESP_RETURN_ON_ERROR(sd_pwr_ctrl_new_on_chip_ldo(&ldo_cfg, &pwr),
-                        TAG, "LDO pwr ctrl gagal");
-    host.pwr_ctrl_handle = pwr;
+  sd_pwr_ctrl_ldo_config_t ldo_cfg = {
+      .ldo_chan_id = CONFIG_EXAMPLE_SD_PWR_CTRL_LDO_IO_ID,
+  };
+  sd_pwr_ctrl_handle_t pwr = NULL;
+  ESP_RETURN_ON_ERROR(sd_pwr_ctrl_new_on_chip_ldo(&ldo_cfg, &pwr), TAG,
+                      "LDO pwr ctrl gagal");
+  host.pwr_ctrl_handle = pwr;
 #endif
 
-    sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
+  sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
 #ifdef CONFIG_EXAMPLE_SDMMC_BUS_WIDTH_4
-    slot.width = 4;
+  slot.width = 4;
 #else
-    slot.width = 1;
+  slot.width = 1;
 #endif
 #ifdef CONFIG_SOC_SDMMC_USE_GPIO_MATRIX
-    slot.clk = CONFIG_EXAMPLE_PIN_CLK;
-    slot.cmd = CONFIG_EXAMPLE_PIN_CMD;
-    slot.d0  = CONFIG_EXAMPLE_PIN_D0;
+  slot.clk = CONFIG_EXAMPLE_PIN_CLK;
+  slot.cmd = CONFIG_EXAMPLE_PIN_CMD;
+  slot.d0 = CONFIG_EXAMPLE_PIN_D0;
 #ifdef CONFIG_EXAMPLE_SDMMC_BUS_WIDTH_4
-    slot.d1  = CONFIG_EXAMPLE_PIN_D1;
-    slot.d2  = CONFIG_EXAMPLE_PIN_D2;
-    slot.d3  = CONFIG_EXAMPLE_PIN_D3;
+  slot.d1 = CONFIG_EXAMPLE_PIN_D1;
+  slot.d2 = CONFIG_EXAMPLE_PIN_D2;
+  slot.d3 = CONFIG_EXAMPLE_PIN_D3;
 #endif
 #endif
-    slot.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
+  slot.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
 
-    card = malloc(sizeof(sdmmc_card_t));
-    if (!card) return ESP_ERR_NO_MEM;
+  card = malloc(sizeof(sdmmc_card_t));
+  if (!card)
+    return ESP_ERR_NO_MEM;
 
-    ESP_ERROR_CHECK((*host.init)());
-    ESP_ERROR_CHECK(sdmmc_host_init_slot(host.slot, &slot));
+  ESP_ERROR_CHECK((*host.init)());
+  ESP_ERROR_CHECK(sdmmc_host_init_slot(host.slot, &slot));
 
-    while (sdmmc_card_init(&host, card)) {
-        ESP_LOGE(TAG, "SD card tidak terdeteksi. Coba lagi dalam 3 detik...");
-        vTaskDelay(pdMS_TO_TICKS(3000));
-    }
-    sdmmc_card_print_info(stdout, card);
+  while (sdmmc_card_init(&host, card)) {
+    ESP_LOGE(TAG, "SD card tidak terdeteksi. Coba lagi dalam 3 detik...");
+    vTaskDelay(pdMS_TO_TICKS(3000));
+  }
+  sdmmc_card_print_info(stdout, card);
 
-    const tinyusb_msc_sdmmc_config_t cfg = {
-        .card                   = card,
-        .callback_mount_changed = _on_mount_changed,
-        .mount_config.max_files = 5,
-    };
-    return tinyusb_msc_storage_init_sdmmc(&cfg);
+  const tinyusb_msc_sdmmc_config_t cfg = {
+      .card = card,
+      .callback_mount_changed = _on_mount_changed,
+      .mount_config.max_files = 5,
+  };
+  return tinyusb_msc_storage_init_sdmmc(&cfg);
 }
 #endif
 
 /* ─── Public API ─── */
 
-esp_err_t storage_manager_init(void)
-{
+esp_err_t storage_manager_init(void) {
 #ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
-    ESP_RETURN_ON_ERROR(_init_spiflash(), TAG, "Inisialisasi SPI Flash gagal");
+  ESP_RETURN_ON_ERROR(_init_spiflash(), TAG, "Inisialisasi SPI Flash gagal");
 #else
-    ESP_RETURN_ON_ERROR(_init_sdmmc(), TAG, "Inisialisasi SDMMC gagal");
+  ESP_RETURN_ON_ERROR(_init_sdmmc(), TAG, "Inisialisasi SDMMC gagal");
 #endif
-    ESP_ERROR_CHECK(tinyusb_msc_register_callback(
-        TINYUSB_MSC_EVENT_MOUNT_CHANGED, _on_mount_changed));
+  ESP_ERROR_CHECK(tinyusb_msc_register_callback(TINYUSB_MSC_EVENT_MOUNT_CHANGED,
+                                                _on_mount_changed));
 
-    /* Pasang USB MSC driver */
-    const tinyusb_config_t tusb_cfg = {
-        .device_descriptor        = &s_device_desc,
-        .string_descriptor        = s_string_desc,
-        .string_descriptor_count  = sizeof(s_string_desc) / sizeof(s_string_desc[0]),
-        .external_phy             = false,
+  /* Pasang USB MSC driver */
+  const tinyusb_config_t tusb_cfg = {
+      .device_descriptor = &s_device_desc,
+      .string_descriptor = s_string_desc,
+      .string_descriptor_count =
+          sizeof(s_string_desc) / sizeof(s_string_desc[0]),
+      .external_phy = false,
 #if (TUD_OPT_HIGH_SPEED)
-        .fs_configuration_descriptor = s_fs_desc,
-        .hs_configuration_descriptor = s_hs_desc,
-        .qualifier_descriptor        = &s_qualifier,
+      .fs_configuration_descriptor = s_fs_desc,
+      .hs_configuration_descriptor = s_hs_desc,
+      .qualifier_descriptor = &s_qualifier,
 #else
-        .configuration_descriptor = s_fs_desc,
+      .configuration_descriptor = s_fs_desc,
 #endif
-    };
-    ESP_RETURN_ON_ERROR(tinyusb_driver_install(&tusb_cfg), TAG, "TinyUSB install gagal");
+  };
+  ESP_RETURN_ON_ERROR(tinyusb_driver_install(&tusb_cfg), TAG,
+                      "TinyUSB install gagal");
 
-    ESP_LOGI(TAG, "Storage manager siap (USB MSC aktif)");
-    return ESP_OK;
+  ESP_LOGI(TAG, "Storage manager siap (USB MSC aktif)");
+  return ESP_OK;
 }
 
-esp_err_t storage_manager_mount(void)
-{
-    ESP_LOGI(TAG, "Mounting storage ke aplikasi (%s)...", STORAGE_BASE_PATH);
-    return tinyusb_msc_storage_mount(STORAGE_BASE_PATH);
+esp_err_t storage_manager_mount(void) {
+  ESP_LOGI(TAG, "Mounting storage ke aplikasi (%s)...", STORAGE_BASE_PATH);
+  return tinyusb_msc_storage_mount(STORAGE_BASE_PATH);
 }
 
-esp_err_t storage_manager_expose_to_usb(void)
-{
-    ESP_LOGI(TAG, "Menyerahkan storage ke USB Host...");
-    return tinyusb_msc_storage_unmount();
+esp_err_t storage_manager_expose_to_usb(void) {
+  ESP_LOGI(TAG, "Menyerahkan storage ke USB Host...");
+  return tinyusb_msc_storage_unmount();
 }
 
-bool storage_manager_in_use_by_usb(void)
-{
-    return tinyusb_msc_storage_in_use_by_usb_host();
+bool storage_manager_in_use_by_usb(void) {
+  return tinyusb_msc_storage_in_use_by_usb_host();
 }
 
-
-esp_err_t storage_manager_format(void)
-{
-    ESP_LOGI(TAG, "Memulai proses format storage...");
-    bool needs_remount = storage_manager_in_use_by_usb();
-    if (needs_remount) {
-        ESP_LOGI(TAG, "Mengambil alih storage dari USB Host...");
-        if (storage_manager_mount() != ESP_OK) {
-            ESP_LOGE(TAG, "Gagal mount storage sebelum format");
-            return ESP_FAIL;
-        }
+esp_err_t storage_manager_format(void) {
+  ESP_LOGI(TAG, "Memulai proses format storage...");
+  bool needs_remount = storage_manager_in_use_by_usb();
+  if (needs_remount) {
+    ESP_LOGI(TAG, "Mengambil alih storage dari USB Host...");
+    if (storage_manager_mount() != ESP_OK) {
+      ESP_LOGE(TAG, "Gagal mount storage sebelum format");
+      return ESP_FAIL;
     }
+  }
 
 #ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
-    esp_vfs_fat_mount_config_t mount_config = {
-        .format_if_mount_failed = true,
-        .max_files = 5,
-        .allocation_unit_size = 512
-    };
-    esp_err_t err = esp_vfs_fat_spiflash_format_cfg_rw_wl(STORAGE_BASE_PATH, "storage", &mount_config);
+  esp_vfs_fat_mount_config_t mount_config = {.format_if_mount_failed = true,
+                                             .max_files = 5,
+                                             .allocation_unit_size = 512};
+  esp_err_t err = esp_vfs_fat_spiflash_format_cfg_rw_wl(
+      STORAGE_BASE_PATH, "storage", &mount_config);
 #else
-    esp_err_t err = ESP_FAIL;
-    ESP_LOGE(TAG, "Format SD Card via API belum didukung penuh di contoh ini");
+  esp_err_t err = ESP_FAIL;
+  ESP_LOGE(TAG, "Format SD Card via API belum didukung penuh di contoh ini");
 #endif
 
-    if (err == ESP_OK) {
-        ESP_LOGI(TAG, "Format berhasil");
-    } else {
-        ESP_LOGE(TAG, "Format gagal: %s", esp_err_to_name(err));
-    }
+  if (err == ESP_OK) {
+    ESP_LOGI(TAG, "Format berhasil");
+  } else {
+    ESP_LOGE(TAG, "Format gagal: %s", esp_err_to_name(err));
+  }
 
-    if (needs_remount) {
-        ESP_LOGI(TAG, "Mengembalikan storage ke USB Host...");
-        storage_manager_expose_to_usb();
-    }
-    return err;
+  if (needs_remount) {
+    ESP_LOGI(TAG, "Mengembalikan storage ke USB Host...");
+    storage_manager_expose_to_usb();
+  }
+  return err;
 }
 
-uint32_t storage_manager_get_sector_count(void)
-{
-    return tinyusb_msc_storage_get_sector_count();
+uint32_t storage_manager_get_sector_count(void) {
+  return tinyusb_msc_storage_get_sector_count();
 }
 
-uint32_t storage_manager_get_sector_size(void)
-{
-    return tinyusb_msc_storage_get_sector_size();
+uint32_t storage_manager_get_sector_size(void) {
+  return tinyusb_msc_storage_get_sector_size();
 }
