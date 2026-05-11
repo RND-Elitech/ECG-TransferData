@@ -19,7 +19,7 @@ static const char *TAG = "app_main";
 #define MQTT_BROKER_PORT 8888
 #define MQTT_USERNAME    "iotgateway"
 #define MQTT_PASSWORD    "iotgateway10nice"
-#define SERVER_UPLOAD_URL "http://192.168.13.156:3000/api/ecg-1200g/upload"
+#define SERVER_UPLOAD_URL "http://192.168.13.145:3000/api/ecg-1200g/upload"
 #define STORAGE_BASE_PATH "/data"
 
 static void _format_task(void *pvParameters)
