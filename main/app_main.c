@@ -1,5 +1,6 @@
 #include "esp_log.h"
 #include "esp_event.h"
+#include "esp_netif.h"
 #include "nvs_flash.h"
 
 #include "wifi_manager.h"
