@@ -538,7 +538,7 @@ static void background_upload_task(void *pvParameters) {
     int ret = console_upload(0, NULL);
     
     char pub_topic[128];
-    snprintf(pub_topic, sizeof(pub_topic), "iotgateway/%s/upload/status", GATEWAY_SN);
+    snprintf(pub_topic, sizeof(pub_topic), "iotgateway/%s/dongle/upload/status", GATEWAY_SN);
     
     char pub_payload[256];
     if (ret == 0) {
@@ -564,15 +564,15 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             ESP_LOGI(TAG, "Berhasil terhubung ke broker MQTT (mqtts://dev.samelement.com:8888)");
             
             char sub_topic[128];
-            snprintf(sub_topic, sizeof(sub_topic), "iotgateway/%s/upload", GATEWAY_SN);
+            snprintf(sub_topic, sizeof(sub_topic), "iotgateway/%s/dongle/upload", GATEWAY_SN);
             esp_mqtt_client_subscribe(mqtt_client, sub_topic, 0);
             
             char sub_ip_topic[128];
-            snprintf(sub_ip_topic, sizeof(sub_ip_topic), "iotgateway/%s/ip/get", GATEWAY_SN);
+            snprintf(sub_ip_topic, sizeof(sub_ip_topic), "iotgateway/%s/dongle/ip/get", GATEWAY_SN);
             esp_mqtt_client_subscribe(mqtt_client, sub_ip_topic, 0);
             
             char pub_topic[128];
-            snprintf(pub_topic, sizeof(pub_topic), "iotgateway/%s/status/online", GATEWAY_SN);
+            snprintf(pub_topic, sizeof(pub_topic), "iotgateway/%s/dongle/status/online", GATEWAY_SN);
             char pub_payload[128];
             snprintf(pub_payload, sizeof(pub_payload), "{\"gateway_sn\":\"%s\",\"data\":{\"online\":true}}", GATEWAY_SN);
             
@@ -580,7 +580,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             ESP_LOGI(TAG, "Berhasil publish status online ke topik: %s (msg_id=%d)", pub_topic, msg_id);
             
             char info_topic[128];
-            snprintf(info_topic, sizeof(info_topic), "iotgateway/%s/info", GATEWAY_SN);
+            snprintf(info_topic, sizeof(info_topic), "iotgateway/%s/dongle/info", GATEWAY_SN);
             char info_payload[256];
             snprintf(info_payload, sizeof(info_payload), 
                 "{\"gateway_sn\":\"%s\",\"data\":{\"model\":\"EcgDongle-01\",\"firmware_version\":\"1.1.1\",\"hardware_revision\":\"R1.1\",\"build_date\":\"2026-05-08\"}}", 
@@ -617,10 +617,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             ESP_LOGI(TAG, "Menerima pesan di topik %.*s: %.*s", event->topic_len, event->topic, event->data_len, event->data);
             
             char sub_topic[128];
-            snprintf(sub_topic, sizeof(sub_topic), "iotgateway/%s/upload", GATEWAY_SN);
+            snprintf(sub_topic, sizeof(sub_topic), "iotgateway/%s/dongle/upload", GATEWAY_SN);
             
             char sub_ip_topic[128];
-            snprintf(sub_ip_topic, sizeof(sub_ip_topic), "iotgateway/%s/ip/get", GATEWAY_SN);
+            snprintf(sub_ip_topic, sizeof(sub_ip_topic), "iotgateway/%s/dongle/ip/get", GATEWAY_SN);
             
             if (event->topic_len == strlen(sub_topic) && strncmp(event->topic, sub_topic, event->topic_len) == 0) {
                 // Parse JSON simple
@@ -645,7 +645,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
                     esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
                     if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
                         char pub_ip_topic[128];
-                        snprintf(pub_ip_topic, sizeof(pub_ip_topic), "iotgateway/%s/ip", GATEWAY_SN);
+                        snprintf(pub_ip_topic, sizeof(pub_ip_topic), "iotgateway/%s/dongle/ip", GATEWAY_SN);
                         
                         char pub_ip_payload[256];
                         snprintf(pub_ip_payload, sizeof(pub_ip_payload), 
@@ -671,7 +671,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 static void mqtt_app_start(void)
 {
     static char lwt_topic[128];
-    snprintf(lwt_topic, sizeof(lwt_topic), "iotgateway/%s/status/online", GATEWAY_SN);
+    snprintf(lwt_topic, sizeof(lwt_topic), "iotgateway/%s/dongle/status/online", GATEWAY_SN);
     
     static char lwt_payload[128];
     snprintf(lwt_payload, sizeof(lwt_payload), "{\"gateway_sn\":\"%s\",\"data\":{\"online\":false}}", GATEWAY_SN);

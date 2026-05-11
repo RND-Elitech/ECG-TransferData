@@ -58,13 +58,13 @@ Semua topik menggunakan `gateway_sn` secara dinamis sehingga mendukung banyak pe
 
 | Topik | Trigger | Retain | Keterangan |
 | :--- | :--- | :--- | :--- |
-| `iotgateway/{sn}/status/online` | Saat konek & saat putus (LWT) | Ya | Mengirim status online/offline |
-| `iotgateway/{sn}/info` | Saat konek | Ya | Mengirim info firmware & hardware |
-| `iotgateway/{sn}/dongle/function` | Saat konek | Ya | Mengirim IP dan fungsi perangkat |
-| `iotgateway/{sn}/ip` | Saat menerima perintah `get` | Tidak | Membalas permintaan IP address |
-| `iotgateway/{sn}/upload/status` | Saat selesai upload | Tidak | Mengirim hasil sukses/gagal upload |
+| `iotgateway/{gateway_sn}/dongle/status/online` | Saat konek & saat putus (LWT) | Ya | Mengirim status online/offline |
+| `iotgateway/{gateway_sn}/dongle/info` | Saat konek | Ya | Mengirim info firmware & hardware |
+| `iotgateway/{gateway_sn}/dongle/function` | Saat konek | Ya | Mengirim IP dan fungsi perangkat |
+| `iotgateway/{gateway_sn}/dongle/ip` | Saat menerima perintah `get` | Tidak | Membalas permintaan IP address |
+| `iotgateway/{gateway_sn}/dongle/upload/status` | Saat selesai upload | Tidak | Mengirim hasil sukses/gagal upload |
 
-#### Payload: `status/online` (Online)
+#### Payload: `dongle/status/online` (Online)
 ```json
 {
   "gateway_sn": "B0001",
@@ -74,7 +74,7 @@ Semua topik menggunakan `gateway_sn` secara dinamis sehingga mendukung banyak pe
 }
 ```
 
-#### Payload: `status/online` (Offline — LWT otomatis dari broker jika perangkat mati mendadak)
+#### Payload: `dongle/status/online` (Offline — LWT otomatis dari broker jika perangkat mati mendadak)
 ```json
 {
   "gateway_sn": "B0001",
@@ -84,7 +84,7 @@ Semua topik menggunakan `gateway_sn` secara dinamis sehingga mendukung banyak pe
 }
 ```
 
-#### Payload: `info`
+#### Payload: `dongle/info`
 ```json
 {
   "gateway_sn": "B0001",
@@ -108,7 +108,7 @@ Semua topik menggunakan `gateway_sn` secara dinamis sehingga mendukung banyak pe
 }
 ```
 
-#### Payload: `ip` (Respons cek IP)
+#### Payload: `dongle/ip` (Respons cek IP)
 ```json
 {
   "gateway_sn": "B0001",
@@ -118,7 +118,7 @@ Semua topik menggunakan `gateway_sn` secara dinamis sehingga mendukung banyak pe
 }
 ```
 
-#### Payload: `upload/status` (Selesai Upload)
+#### Payload: `dongle/upload/status` (Selesai Upload)
 ```json
 {
   "gateway_sn": "B0001",
@@ -135,8 +135,8 @@ Semua topik menggunakan `gateway_sn` secara dinamis sehingga mendukung banyak pe
 
 | Topik | Payload | Aksi |
 | :--- | :--- | :--- |
-| `iotgateway/{sn}/upload` | JSON dengan `command: "upload"` | Memicu proses upload file ke server |
-| `iotgateway/{sn}/ip/get` | `get` | Memicu ESP32 membalas dengan IP address-nya |
+| `iotgateway/{gateway_sn}/dongle/upload` | JSON dengan `command: "upload"` | Memicu proses upload file ke server |
+| `iotgateway/{gateway_sn}/dongle/ip/get` | `get` | Memicu ESP32 membalas dengan IP address-nya |
 
 #### Payload: Perintah Upload
 ```json
