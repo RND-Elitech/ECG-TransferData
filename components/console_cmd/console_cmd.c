@@ -1,5 +1,8 @@
 #include "console_cmd.h"
 #include "uploader.h"
+#include <dirent.h>
+#include <sys/types.h>
+#include <string.h>
 #include "storage_manager.h"
 
 #include <stdio.h>
