@@ -110,6 +110,8 @@ static esp_err_t _init_spiflash(void)
         .wl_handle              = wl_handle,
         .callback_mount_changed = _on_mount_changed,
         .mount_config.max_files = 5,
+        .mount_config.format_if_mount_failed = true,
+        .mount_config.allocation_unit_size = 512,
     };
     return tinyusb_msc_storage_init_spiflash(&cfg);
 }
