@@ -24,9 +24,8 @@ Program ini memungkinkan ESP32 untuk:
 
 ### 3. Alur Kerja Perangkat (Workflow)
 1. **Inisialisasi**: Menyiapkan NVS, Wi-Fi, dan MQTT.
-2. **Startup Cleanup**: Saat boot, semua file lama di storage dihapus otomatis sebelum di-expose ke USB Host.
-3. **USB Setup**: Storage di-expose ke USB Host (mode Expose) secara default.
-4. **MQTT Connect**: Begitu terhubung, ESP32 langsung mempublikasikan beberapa pesan (lihat bagian MQTT).
+2. **USB Setup**: Storage di-expose ke USB Host (mode Expose) secara default.
+3. **MQTT Connect**: Begitu terhubung, ESP32 langsung mempublikasikan beberapa pesan (lihat bagian MQTT).
 5. **Proses Upload via MQTT**:
    - Menerima perintah JSON dari topik `iotgateway/{gateway_sn}/upload`.
    - Mengambil alih storage dari USB Host (otomatis).
@@ -63,6 +62,7 @@ Semua topik menggunakan `gateway_sn` secara dinamis sehingga mendukung banyak pe
 | `iotgateway/{gateway_sn}/dongle/function` | Saat konek | Ya | Mengirim IP dan fungsi perangkat |
 | `iotgateway/{gateway_sn}/dongle/ip` | Saat menerima perintah `get` | Tidak | Membalas permintaan IP address |
 | `iotgateway/{gateway_sn}/dongle/upload/status` | Saat selesai upload | Tidak | Mengirim hasil sukses/gagal upload |
+| `iotgateway/{gateway_sn}/dongle/format/status` | Saat selesai format | Tidak | Mengirim hasil sukses/gagal format |
 
 #### Payload: `dongle/status/online` (Online)
 ```json
@@ -129,6 +129,17 @@ Semua topik menggunakan `gateway_sn` secara dinamis sehingga mendukung banyak pe
 ```
 > **Catatan**: Jika gagal, status bernilai `"failed"`. Informasi jumlah file yang sukses/gagal dapat dilihat melalui log terminal.
 
+#### Payload: `dongle/format/status` (Selesai Format)
+```json
+{
+  "gateway_sn": "B0001",
+  "data": {
+    "status": "completed"
+  }
+}
+```
+> **Catatan**: Jika gagal, status bernilai `"failed"`.
+
 ---
 
 ### B. Subscribe (Broker → ESP32)
@@ -136,6 +147,7 @@ Semua topik menggunakan `gateway_sn` secara dinamis sehingga mendukung banyak pe
 | Topik | Payload | Aksi |
 | :--- | :--- | :--- |
 | `iotgateway/{gateway_sn}/dongle/upload` | JSON dengan `command: "upload"` | Memicu proses upload file ke server |
+| `iotgateway/{gateway_sn}/dongle/format` | JSON dengan `command: "format"` | Memicu proses format storage |
 | `iotgateway/{gateway_sn}/dongle/ip/get` | `get` | Memicu ESP32 membalas dengan IP address-nya |
 
 #### Payload: Perintah Upload
@@ -149,6 +161,18 @@ Semua topik menggunakan `gateway_sn` secara dinamis sehingga mendukung banyak pe
 ```
 
 > **Catatan**: ESP32 memvalidasi bahwa `gateway_sn` di dalam JSON cocok dengan miliknya dan nilai `command` adalah `"upload"` sebelum menjalankan proses.
+
+#### Payload: Perintah Format
+```json
+{
+  "gateway_sn": "B0001",
+  "data": {
+    "command": "format"
+  }
+}
+```
+
+> **Catatan**: ESP32 juga memvalidasi bahwa `gateway_sn` cocok dan nilai `command` adalah `"format"` sebelum memformat storage.
 
 ---
 

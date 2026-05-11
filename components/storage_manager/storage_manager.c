@@ -8,6 +8,7 @@
 #include "tinyusb.h"
 #include "tusb_msc_storage.h"
 #include "sdkconfig.h"
+#include "esp_vfs_fat.h"
 
 #ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
 #include "wear_levelling.h"
@@ -219,40 +220,42 @@ bool storage_manager_in_use_by_usb(void)
     return tinyusb_msc_storage_in_use_by_usb_host();
 }
 
-void storage_manager_cleanup(void)
+
+esp_err_t storage_manager_format(void)
 {
-    ESP_LOGI(TAG, "Membersihkan storage awal...");
-    DIR *dir = opendir(STORAGE_BASE_PATH);
-    if (!dir) {
-        ESP_LOGW(TAG, "Gagal membuka direktori untuk dibersihkan: %s", STORAGE_BASE_PATH);
-        return;
-    }
-
-    struct dirent *entry;
-    char path[512];
-    while ((entry = readdir(dir)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
-        snprintf(path, sizeof(path), "%s/%s", STORAGE_BASE_PATH, entry->d_name);
-
-        if (entry->d_type == DT_DIR) {
-            DIR *sub = opendir(path);
-            if (sub) {
-                struct dirent *sub_entry;
-                char sub_path[768];
-                while ((sub_entry = readdir(sub)) != NULL) {
-                    if (strcmp(sub_entry->d_name, ".") == 0 || strcmp(sub_entry->d_name, "..") == 0) continue;
-                    snprintf(sub_path, sizeof(sub_path), "%s/%s", path, sub_entry->d_name);
-                    unlink(sub_path);
-                }
-                closedir(sub);
-            }
-            rmdir(path);
-        } else {
-            unlink(path);
+    ESP_LOGI(TAG, "Memulai proses format storage...");
+    bool needs_remount = storage_manager_in_use_by_usb();
+    if (needs_remount) {
+        ESP_LOGI(TAG, "Mengambil alih storage dari USB Host...");
+        if (storage_manager_mount() != ESP_OK) {
+            ESP_LOGE(TAG, "Gagal mount storage sebelum format");
+            return ESP_FAIL;
         }
     }
-    closedir(dir);
-    ESP_LOGI(TAG, "Pembersihan storage selesai");
+
+#ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
+    esp_vfs_fat_mount_config_t mount_config = {
+        .format_if_mount_failed = true,
+        .max_files = 5,
+        .allocation_unit_size = 512
+    };
+    esp_err_t err = esp_vfs_fat_spiflash_format_cfg_rw_wl(STORAGE_BASE_PATH, "storage", &mount_config);
+#else
+    esp_err_t err = ESP_FAIL;
+    ESP_LOGE(TAG, "Format SD Card via API belum didukung penuh di contoh ini");
+#endif
+
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Format berhasil");
+    } else {
+        ESP_LOGE(TAG, "Format gagal: %s", esp_err_to_name(err));
+    }
+
+    if (needs_remount) {
+        ESP_LOGI(TAG, "Mengembalikan storage ke USB Host...");
+        storage_manager_expose_to_usb();
+    }
+    return err;
 }
 
 uint32_t storage_manager_get_sector_count(void)

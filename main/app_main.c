@@ -22,6 +22,19 @@ static const char *TAG = "app_main";
 #define SERVER_UPLOAD_URL "http://192.168.13.156:3000/api/ecg-1200g/upload"
 #define STORAGE_BASE_PATH "/data"
 
+static void _format_task(void *pvParameters)
+{
+    esp_err_t err = storage_manager_format();
+    mqtt_manager_publish_format_status(err == ESP_OK);
+    vTaskDelete(NULL);
+}
+
+static void format_trigger(void *ctx)
+{
+    ESP_LOGI(TAG, "Memulai background format task...");
+    xTaskCreate(_format_task, "format_task", 4096, NULL, 5, NULL);
+}
+
 void app_main(void)
 {
     ESP_LOGI(TAG, "=== ECG Dongle Booting ===");
@@ -45,8 +58,7 @@ void app_main(void)
     ESP_ERROR_CHECK(storage_manager_init());
     ESP_ERROR_CHECK(storage_manager_mount());
 
-    /* 4. Bersihkan file lama, lalu serahkan storage ke USB Host */
-    storage_manager_cleanup();
+    /* 4. Serahkan storage ke USB Host */
     ESP_ERROR_CHECK(storage_manager_expose_to_usb());
     ESP_LOGI(TAG, "Storage siap di-expose ke USB Host");
 
@@ -65,6 +77,7 @@ void app_main(void)
         .password      = MQTT_PASSWORD,
         .gateway_sn    = GATEWAY_SN,
         .on_upload_cmd = uploader_trigger,
+        .on_format_cmd = format_trigger,
         .cb_ctx        = NULL,
     }));
 
