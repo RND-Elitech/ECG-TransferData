@@ -3,6 +3,9 @@
 #include "storage_manager.h"
 
 #include <stdio.h>
+#include <dirent.h>
+#include <sys/types.h>
+#include <string.h>
 #include "esp_log.h"
 #include "esp_console.h"
 #include "sdkconfig.h"
