@@ -11,18 +11,12 @@
 #include <string.h>
 #include <unistd.h>
 
-
-#ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
-#include "esp_partition.h"
-#include "wear_levelling.h"
-
-#else
+/* SD card via built-in SDMMC peripheral */
 #include "diskio_impl.h"
 #include "diskio_sdmmc.h"
-#ifdef CONFIG_EXAMPLE_SD_PWR_CTRL_LDO_INTERNAL_IO
-#include "sd_pwr_ctrl_by_on_chip_ldo.h"
-#endif
-#endif
+#include "driver/sdmmc_host.h"
+#include "sdmmc_cmd.h"
+
 
 static const char *TAG = "storage_manager";
 
@@ -96,58 +90,28 @@ static void _on_mount_changed(tinyusb_msc_event_t *event) {
            event->mount_changed_data.is_mounted ? "Ya" : "Tidak");
 }
 
-/* ─── Init media penyimpanan ─── */
-#ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
-static esp_err_t _init_spiflash(void) {
-  static wl_handle_t wl_handle = WL_INVALID_HANDLE;
-  const esp_partition_t *part = esp_partition_find_first(
-      ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, NULL);
-  if (!part) {
-    ESP_LOGE(TAG, "Partisi FAT tidak ditemukan");
-    return ESP_ERR_NOT_FOUND;
-  }
-  ESP_RETURN_ON_ERROR(wl_mount(part, &wl_handle), TAG, "wl_mount gagal");
-
-  const tinyusb_msc_spiflash_config_t cfg = {
-      .wl_handle = wl_handle,
-      .callback_mount_changed = _on_mount_changed,
-      .mount_config.max_files = 5,
-      .mount_config.format_if_mount_failed = true,
-      .mount_config.allocation_unit_size = 512,
-  };
-  return tinyusb_msc_storage_init_spiflash(&cfg);
-}
-#else
+/* ─── Init SD Card via built-in SDMMC ─── */
 static esp_err_t _init_sdmmc(void) {
   static sdmmc_card_t *card = NULL;
   sdmmc_host_t host = SDMMC_HOST_DEFAULT();
 
-#if CONFIG_EXAMPLE_SD_PWR_CTRL_LDO_INTERNAL_IO
-  sd_pwr_ctrl_ldo_config_t ldo_cfg = {
-      .ldo_chan_id = CONFIG_EXAMPLE_SD_PWR_CTRL_LDO_IO_ID,
-  };
-  sd_pwr_ctrl_handle_t pwr = NULL;
-  ESP_RETURN_ON_ERROR(sd_pwr_ctrl_new_on_chip_ldo(&ldo_cfg, &pwr), TAG,
-                      "LDO pwr ctrl gagal");
-  host.pwr_ctrl_handle = pwr;
+  sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
+  slot.width = 1;  // 1-bit mode
+
+  /* Pin assignment: Fallback to manual values if Kconfig is not updated */
+#ifndef CONFIG_EXAMPLE_PIN_CLK
+#define CONFIG_EXAMPLE_PIN_CLK 39
+#endif
+#ifndef CONFIG_EXAMPLE_PIN_CMD
+#define CONFIG_EXAMPLE_PIN_CMD 38
+#endif
+#ifndef CONFIG_EXAMPLE_PIN_D0
+#define CONFIG_EXAMPLE_PIN_D0  40
 #endif
 
-  sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
-#ifdef CONFIG_EXAMPLE_SDMMC_BUS_WIDTH_4
-  slot.width = 4;
-#else
-  slot.width = 1;
-#endif
-#ifdef CONFIG_SOC_SDMMC_USE_GPIO_MATRIX
   slot.clk = CONFIG_EXAMPLE_PIN_CLK;
   slot.cmd = CONFIG_EXAMPLE_PIN_CMD;
-  slot.d0 = CONFIG_EXAMPLE_PIN_D0;
-#ifdef CONFIG_EXAMPLE_SDMMC_BUS_WIDTH_4
-  slot.d1 = CONFIG_EXAMPLE_PIN_D1;
-  slot.d2 = CONFIG_EXAMPLE_PIN_D2;
-  slot.d3 = CONFIG_EXAMPLE_PIN_D3;
-#endif
-#endif
+  slot.d0  = CONFIG_EXAMPLE_PIN_D0;
   slot.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
 
   card = malloc(sizeof(sdmmc_card_t));
@@ -164,22 +128,18 @@ static esp_err_t _init_sdmmc(void) {
   sdmmc_card_print_info(stdout, card);
 
   const tinyusb_msc_sdmmc_config_t cfg = {
-      .card = card,
+      .card                   = card,
       .callback_mount_changed = _on_mount_changed,
       .mount_config.max_files = 5,
   };
   return tinyusb_msc_storage_init_sdmmc(&cfg);
 }
-#endif
+
 
 /* ─── Public API ─── */
 
 esp_err_t storage_manager_init(void) {
-#ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
-  ESP_RETURN_ON_ERROR(_init_spiflash(), TAG, "Inisialisasi SPI Flash gagal");
-#else
   ESP_RETURN_ON_ERROR(_init_sdmmc(), TAG, "Inisialisasi SDMMC gagal");
-#endif
   ESP_ERROR_CHECK(tinyusb_msc_register_callback(TINYUSB_MSC_EVENT_MOUNT_CHANGED,
                                                 _on_mount_changed));
 
@@ -230,16 +190,11 @@ esp_err_t storage_manager_format(void) {
     }
   }
 
-#ifdef CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH
-  esp_vfs_fat_mount_config_t mount_config = {.format_if_mount_failed = true,
-                                             .max_files = 5,
-                                             .allocation_unit_size = 512};
-  esp_err_t err = esp_vfs_fat_spiflash_format_cfg_rw_wl(
-      STORAGE_BASE_PATH, "storage", &mount_config);
-#else
+  /* Format SD Card via API dari dalam ESP32 belum didukung penuh di contoh dasar TinyUSB.
+     Biasanya SD Card diformat dari PC setelah di-mount sebagai USB Drive. */
   esp_err_t err = ESP_FAIL;
-  ESP_LOGE(TAG, "Format SD Card via API belum didukung penuh di contoh ini");
-#endif
+  ESP_LOGE(TAG, "Format SD Card via ESP32 API belum didukung. Silakan format dari PC.");
+
 
   if (err == ESP_OK) {
     ESP_LOGI(TAG, "Format berhasil");
