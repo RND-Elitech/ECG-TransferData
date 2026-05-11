@@ -12,7 +12,7 @@
 static const char *TAG = "app_main";
 
 /* ─── Konfigurasi Perangkat ─── */
-#define GATEWAY_SN       "B0001"
+#define GATEWAY_SN       "GWTEST"
 #define WIFI_SSID        "Elitech"
 #define WIFI_PASSWORD    "wifis1nko"
 #define MQTT_BROKER_URI  "mqtts://dev.samelement.com"
