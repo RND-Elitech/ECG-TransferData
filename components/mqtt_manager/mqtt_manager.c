@@ -97,7 +97,7 @@ static void _mqtt_event_handler(void *handler_args, esp_event_base_t base,
 
             /* Subscribe topik-topik yang dibutuhkan */
             _subscribe("upload");
-            _subscribe("format");
+
             _subscribe("ip/get");
 
             /* Publish status online */
@@ -141,27 +141,7 @@ static void _mqtt_event_handler(void *handler_args, esp_event_base_t base,
                     ESP_LOGW(TAG, "Payload upload tidak valid atau SN tidak cocok");
                 }
             }
-            /* Perintah format */
-            else if (_topic_matches(topic, topic_len, "format")) {
-                char *data = malloc(event->data_len + 1);
-                if (!data) break;
-                memcpy(data, event->data, event->data_len);
-                data[event->data_len] = '\0';
 
-                bool valid = strstr(data, s_gateway_sn)
-                          && strstr(data, "\"command\"")
-                          && strstr(data, "\"format\"");
-                free(data);
-
-                if (valid) {
-                    ESP_LOGI(TAG, "Perintah format valid diterima, memanggil callback...");
-                    if (s_cfg.on_format_cmd) {
-                        s_cfg.on_format_cmd(s_cfg.cb_ctx);
-                    }
-                } else {
-                    ESP_LOGW(TAG, "Payload format tidak valid atau SN tidak cocok");
-                }
-            }
             /* Permintaan IP */
             else if (_topic_matches(topic, topic_len, "ip/get")) {
                 if (event->data_len == 3 && strncmp(event->data, "get", 3) == 0) {
@@ -236,11 +216,4 @@ void mqtt_manager_publish_upload_status(bool success)
     _publish("upload/status", payload, 1, 0);
 }
 
-void mqtt_manager_publish_format_status(bool success)
-{
-    char payload[128];
-    snprintf(payload, sizeof(payload),
-        "{\"gateway_sn\":\"%s\",\"data\":{\"status\":\"%s\"}}",
-        s_gateway_sn, success ? "completed" : "failed");
-    _publish("format/status", payload, 1, 0);
-}
+

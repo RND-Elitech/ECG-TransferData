@@ -30,12 +30,7 @@ esp_err_t storage_manager_mount(void);
 esp_err_t storage_manager_expose_to_usb(void);
 
 
-/**
- * @brief Format partisi storage dengan FAT File System.
- *
- * @return ESP_OK jika berhasil
- */
-esp_err_t storage_manager_format(void);
+
 
 /**
  * @brief Cek apakah storage sedang dipakai oleh USB Host.

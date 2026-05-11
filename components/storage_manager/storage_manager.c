@@ -179,35 +179,6 @@ bool storage_manager_in_use_by_usb(void) {
   return tinyusb_msc_storage_in_use_by_usb_host();
 }
 
-esp_err_t storage_manager_format(void) {
-  ESP_LOGI(TAG, "Memulai proses format storage...");
-  bool needs_remount = storage_manager_in_use_by_usb();
-  if (needs_remount) {
-    ESP_LOGI(TAG, "Mengambil alih storage dari USB Host...");
-    if (storage_manager_mount() != ESP_OK) {
-      ESP_LOGE(TAG, "Gagal mount storage sebelum format");
-      return ESP_FAIL;
-    }
-  }
-
-  /* Format SD Card via API dari dalam ESP32 belum didukung penuh di contoh dasar TinyUSB.
-     Biasanya SD Card diformat dari PC setelah di-mount sebagai USB Drive. */
-  esp_err_t err = ESP_FAIL;
-  ESP_LOGE(TAG, "Format SD Card via ESP32 API belum didukung. Silakan format dari PC.");
-
-
-  if (err == ESP_OK) {
-    ESP_LOGI(TAG, "Format berhasil");
-  } else {
-    ESP_LOGE(TAG, "Format gagal: %s", esp_err_to_name(err));
-  }
-
-  if (needs_remount) {
-    ESP_LOGI(TAG, "Mengembalikan storage ke USB Host...");
-    storage_manager_expose_to_usb();
-  }
-  return err;
-}
 
 uint32_t storage_manager_get_sector_count(void) {
   return tinyusb_msc_storage_get_sector_count();
