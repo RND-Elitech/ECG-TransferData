@@ -6,7 +6,10 @@
  * @brief Konfigurasi untuk modul uploader.
  */
 typedef struct {
-    const char *server_url;   ///< URL endpoint HTTP upload
+    const char *ftp_host;     ///< Host/IP FTP server
+    int ftp_port;             ///< Port FTP server (biasanya 21)
+    const char *ftp_user;     ///< Username FTP
+    const char *ftp_pass;     ///< Password FTP
     const char *base_path;    ///< Base path storage (contoh: "/data")
 } uploader_config_t;
 
