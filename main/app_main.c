@@ -1,12 +1,22 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_wifi.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+
+#include "console_cmd.h"
+#include "dns_server.h"
+#include "mdns.h"
+#include "mqtt_manager.h"
+#include "storage_manager.h"
+#include "uploader.h"
+#include "web_server.h"
+#include "wifi_manager.h"
 
 #define RESET_BTN_PIN GPIO_NUM_1
 
@@ -41,13 +51,21 @@ static void reset_btn_task(void *arg) {
   }
 }
 
-#include "console_cmd.h"
-#include "dns_server.h"
-#include "mqtt_manager.h"
-#include "storage_manager.h"
-#include "uploader.h"
-#include "web_server.h"
-#include "wifi_manager.h"
+int32_t g_ap_timeout_sec = 300; // 5 minutes
+
+static void ap_timeout_task(void *arg) {
+  while (g_ap_timeout_sec > 0) {
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    g_ap_timeout_sec--;
+  }
+  ESP_LOGI("ap_timeout", "Waktu 5 menit habis. Mematikan AP mode...");
+  web_server_set_dashboard_mode(false);
+  dns_server_stop();
+  esp_wifi_set_mode(WIFI_MODE_STA);
+  vTaskDelete(NULL);
+}
+
+
 
 static const char *TAG = "app_main";
 
@@ -210,6 +228,23 @@ static void run_normal_operation(void) {
 
   /* 7. Jalankan Console REPL */
   ESP_ERROR_CHECK(console_cmd_init());
+
+  /* 8. Mulai mDNS */
+  ESP_LOGI(TAG, "Memulai mDNS service...");
+  ESP_ERROR_CHECK(mdns_init());
+  mdns_hostname_set("medlink-dongle");
+  mdns_instance_name_set("MedLink Dongle ECG");
+  mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+  ESP_LOGI(TAG, "mDNS aktif. Akses via: http://medlink-dongle.local");
+
+  /* 9. Mulai Web Server dan DNS (Captive Portal Dashboard) */
+  ESP_LOGI(TAG, "Memulai Web Server dan DNS (Captive Portal)...");
+  ESP_ERROR_CHECK(web_server_start());
+  web_server_set_dashboard_mode(true);   /* Tampilkan dashboard.html saat APSTA aktif */
+  ESP_ERROR_CHECK(dns_server_start());
+
+  /* 10. Mulai task countdown AP Timeout */
+  xTaskCreate(ap_timeout_task, "ap_timeout", 2048, NULL, 5, NULL);
 
   ESP_LOGI(TAG, "=== ECG Dongle Siap ===");
 }

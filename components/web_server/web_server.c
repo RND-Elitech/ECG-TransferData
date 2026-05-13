@@ -31,10 +31,14 @@
 
 static const char *TAG = "web_server";
 static httpd_handle_t s_server = NULL;
+static bool s_is_dashboard = false;
+extern int32_t g_ap_timeout_sec;
 
-/* ─── Embedded root.html ─── */
-extern const uint8_t root_html_start[] asm("_binary_root_html_start");
-extern const uint8_t root_html_end[]   asm("_binary_root_html_end");
+/* ─── Embedded HTML files ─── */
+extern const uint8_t root_html_start[]      asm("_binary_root_html_start");
+extern const uint8_t root_html_end[]        asm("_binary_root_html_end");
+extern const uint8_t dashboard_html_start[] asm("_binary_dashboard_html_start");
+extern const uint8_t dashboard_html_end[]   asm("_binary_dashboard_html_end");
 
 /* ────────────────────────────────────────────────
  * Helpers
@@ -98,13 +102,23 @@ static esp_err_t nvs_set_str_helper(nvs_handle_t h, const char *key, const char 
 }
 
 /* ────────────────────────────────────────────────
- * Handler: GET /  (root.html)
+ * Handler: GET /  (root.html or dashboard.html)
  * ──────────────────────────────────────────────── */
 static esp_err_t handler_root(httpd_req_t *req) {
-    size_t html_len = root_html_end - root_html_start;
+    const uint8_t *html_start;
+    size_t html_len;
+
+    if (s_is_dashboard) {
+        html_start = dashboard_html_start;
+        html_len   = dashboard_html_end - dashboard_html_start;
+    } else {
+        html_start = root_html_start;
+        html_len   = root_html_end - root_html_start;
+    }
+
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
-    httpd_resp_send(req, (const char *)root_html_start, (ssize_t)html_len);
+    httpd_resp_send(req, (const char *)html_start, (ssize_t)html_len);
     return ESP_OK;
 }
 
@@ -195,10 +209,6 @@ static esp_err_t handler_save(httpd_req_t *req) {
     parse_form_field(body, "ip_address",  ip_addr,    sizeof(ip_addr));
     parse_form_field(body, "subnet_mask", subnet,     sizeof(subnet));
     parse_form_field(body, "gateway",     gateway,    sizeof(gateway));
-    parse_form_field(body, "ftp_host",    ftp_host,   sizeof(ftp_host));
-    parse_form_field(body, "ftp_port",    ftp_port_s, sizeof(ftp_port_s));
-    parse_form_field(body, "ftp_user",    ftp_user,   sizeof(ftp_user));
-    parse_form_field(body, "ftp_pass",    ftp_pass,   sizeof(ftp_pass));
     free(body);
 
     /* Validasi minimal */
@@ -214,15 +224,6 @@ static esp_err_t handler_save(httpd_req_t *req) {
         httpd_resp_sendstr(req, resp);
         return ESP_OK;
     }
-    if (ftp_host[0] == '\0') {
-        const char *resp = "{\"status\":\"error\",\"message\":\"FTP Host tidak boleh kosong\"}";
-        httpd_resp_set_type(req, "application/json");
-        httpd_resp_sendstr(req, resp);
-        return ESP_OK;
-    }
-
-    /* Default FTP port */
-    int32_t ftp_port = (ftp_port_s[0] != '\0') ? (int32_t)atoi(ftp_port_s) : 21;
 
     /* Simpan ke NVS */
     nvs_handle_t nvs_h;
@@ -241,10 +242,15 @@ static esp_err_t handler_save(httpd_req_t *req) {
     if (ip_addr[0])  nvs_set_str_helper(nvs_h, "ip_addr",  ip_addr);
     if (subnet[0])   nvs_set_str_helper(nvs_h, "ip_subnet", subnet);
     if (gateway[0])  nvs_set_str_helper(nvs_h, "ip_gw",    gateway);
-    nvs_set_str_helper(nvs_h, "ftp_host", ftp_host);
-    nvs_set_i32(nvs_h, "ftp_port", ftp_port);
-    nvs_set_str_helper(nvs_h, "ftp_user", ftp_user);
-    nvs_set_str_helper(nvs_h, "ftp_pass", ftp_pass);
+
+    if (ftp_host[0]) nvs_set_str_helper(nvs_h, "ftp_host", ftp_host);
+    if (ftp_port_s[0]) {
+        int32_t ftp_port = (int32_t)atoi(ftp_port_s);
+        nvs_set_i32(nvs_h, "ftp_port", ftp_port);
+    }
+    if (ftp_user[0]) nvs_set_str_helper(nvs_h, "ftp_user", ftp_user);
+    if (ftp_pass[0]) nvs_set_str_helper(nvs_h, "ftp_pass", ftp_pass);
+
     nvs_commit(nvs_h);
     nvs_close(nvs_h);
 
@@ -260,6 +266,87 @@ static esp_err_t handler_save(httpd_req_t *req) {
     vTaskDelay(pdMS_TO_TICKS(800));
     esp_restart();
 
+    return ESP_OK;
+}
+
+
+
+/* ────────────────────────────────────────────────
+ * Handler: POST /reset  (Reset to factory settings)
+ * ──────────────────────────────────────────────── */
+static esp_err_t handler_reset(httpd_req_t *req) {
+    /* Read body */
+    int total = req->content_len;
+    if (total <= 0 || total > 512) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad body size");
+        return ESP_FAIL;
+    }
+
+    char *body = malloc(total + 1);
+    if (!body) {
+        httpd_resp_send_500(req);
+        return ESP_ERR_NO_MEM;
+    }
+
+    int received = 0;
+    while (received < total) {
+        int ret = httpd_req_recv(req, body + received, total - received);
+        if (ret <= 0) {
+            free(body);
+            return ESP_FAIL;
+        }
+        received += ret;
+    }
+    body[total] = '\0';
+
+    char password[64] = {0};
+    parse_form_field(body, "password", password, sizeof(password));
+    free(body);
+
+    if (strcmp(password, "admin") != 0) {
+        httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Invalid password");
+        return ESP_OK;
+    }
+
+    ESP_LOGW(TAG, "Factory reset requested via Web Dashboard");
+    
+    nvs_handle_t nvs_h;
+    if (nvs_open("config", NVS_READWRITE, &nvs_h) == ESP_OK) {
+        nvs_erase_all(nvs_h);
+        nvs_commit(nvs_h);
+        nvs_close(nvs_h);
+    }
+    
+    httpd_resp_sendstr(req, "OK");
+    
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    esp_restart();
+    
+    return ESP_OK;
+}
+
+/* ────────────────────────────────────────────────
+ * Handler: GET /ap_status
+ * ──────────────────────────────────────────────── */
+static esp_err_t handler_ap_status(httpd_req_t *req) {
+    char resp[64];
+    snprintf(resp, sizeof(resp), "{\"remaining_seconds\":%ld}", (long)g_ap_timeout_sec);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, resp);
+    return ESP_OK;
+}
+
+/* ────────────────────────────────────────────────
+ * Handler: POST /ap_extend
+ * ──────────────────────────────────────────────── */
+static esp_err_t handler_ap_extend(httpd_req_t *req) {
+    if (g_ap_timeout_sec > 0) {
+        g_ap_timeout_sec += 60;
+        ESP_LOGI(TAG, "AP Timeout diperpanjang 60 detik");
+    }
+    const char *resp = "{\"status\":\"success\"}";
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, resp);
     return ESP_OK;
 }
 
@@ -318,6 +405,9 @@ esp_err_t web_server_start(void) {
         { .uri = "/",                  .method = HTTP_GET,  .handler = handler_root         },
         { .uri = "/scan",              .method = HTTP_GET,  .handler = handler_scan         },
         { .uri = "/save",              .method = HTTP_POST, .handler = handler_save         },
+        { .uri = "/reset",             .method = HTTP_POST, .handler = handler_reset        },
+        { .uri = "/ap_status",         .method = HTTP_GET,  .handler = handler_ap_status    },
+        { .uri = "/ap_extend",         .method = HTTP_POST, .handler = handler_ap_extend    },
         { .uri = "/generate_204",      .method = HTTP_GET,  .handler = handler_generate_204 },
         { .uri = "/connecttest.txt",   .method = HTTP_GET,  .handler = handler_ncsi         },
         { .uri = "/hotspot-detect.html",.method = HTTP_GET, .handler = handler_catchall     },
@@ -339,4 +429,9 @@ void web_server_stop(void) {
         s_server = NULL;
         ESP_LOGI(TAG, "HTTP server dihentikan");
     }
+}
+
+void web_server_set_dashboard_mode(bool enable) {
+    s_is_dashboard = enable;
+    ESP_LOGI(TAG, "Dashboard mode: %s", enable ? "ON (dashboard.html)" : "OFF (root.html)");
 }

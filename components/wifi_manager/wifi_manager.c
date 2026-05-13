@@ -50,6 +50,7 @@ esp_err_t wifi_manager_start(const char *ssid, const char *password,
     s_wifi_event_group = xEventGroupCreate();
 
     s_sta_netif = esp_netif_create_default_wifi_sta();
+    s_ap_netif = esp_netif_create_default_wifi_ap();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -61,14 +62,29 @@ esp_err_t wifi_manager_start(const char *ssid, const char *password,
         IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_sta_event_handler, NULL, NULL));
 
     wifi_config_t wifi_config = {0};
-    strncpy((char *)wifi_config.sta.ssid, ssid,
-            sizeof(wifi_config.sta.ssid) - 1);
-    strncpy((char *)wifi_config.sta.password, password,
-            sizeof(wifi_config.sta.password) - 1);
+    strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
+    strncpy((char *)wifi_config.sta.password, password, sizeof(wifi_config.sta.password) - 1);
     wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    uint8_t mac[6];
+    esp_wifi_get_mac(WIFI_IF_STA, mac);
+    char ap_ssid[32];
+    snprintf(ap_ssid, sizeof(ap_ssid), "MedLink-Dongle-%02X%02X", mac[4], mac[5]);
+    
+    wifi_config_t ap_config = {
+        .ap = {
+            .ssid_len       = 0,
+            .channel        = 1,
+            .authmode       = WIFI_AUTH_OPEN,
+            .max_connection = 4,
+            .beacon_interval= 100,
+        },
+    };
+    strncpy((char *)ap_config.ap.ssid, ap_ssid, sizeof(ap_config.ap.ssid) - 1);
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 
     ESP_LOGI(TAG, "Menghubungkan ke WiFi SSID: '%s' ...", ssid);
