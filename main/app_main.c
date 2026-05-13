@@ -51,7 +51,7 @@ static void reset_btn_task(void *arg) {
   }
 }
 
-int32_t g_ap_timeout_sec = 300; // 5 minutes
+int32_t g_ap_timeout_sec = 120; // 2 minutes
 
 static void ap_timeout_task(void *arg) {
   while (g_ap_timeout_sec > 0) {
@@ -64,8 +64,6 @@ static void ap_timeout_task(void *arg) {
   esp_wifi_set_mode(WIFI_MODE_STA);
   vTaskDelete(NULL);
 }
-
-
 
 static const char *TAG = "app_main";
 
@@ -240,7 +238,8 @@ static void run_normal_operation(void) {
   /* 9. Mulai Web Server dan DNS (Captive Portal Dashboard) */
   ESP_LOGI(TAG, "Memulai Web Server dan DNS (Captive Portal)...");
   ESP_ERROR_CHECK(web_server_start());
-  web_server_set_dashboard_mode(true);   /* Tampilkan dashboard.html saat APSTA aktif */
+  web_server_set_dashboard_mode(
+      true); /* Tampilkan dashboard.html saat APSTA aktif */
   ESP_ERROR_CHECK(dns_server_start());
 
   /* 10. Mulai task countdown AP Timeout */

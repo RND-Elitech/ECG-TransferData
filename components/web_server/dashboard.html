@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,7 +8,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
     body {
       font-family: 'Inter', sans-serif;
@@ -26,13 +33,20 @@
       padding: 40px;
       max-width: 520px;
       width: 100%;
-      box-shadow: 0 25px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.1);
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1);
       animation: slideUp 0.5s ease;
     }
 
     @keyframes slideUp {
-      from { opacity: 0; transform: translateY(30px); }
-      to   { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     .header {
@@ -84,8 +98,10 @@
     .ap-timer-card::before {
       content: '';
       position: absolute;
-      top: -30px; right: -30px;
-      width: 100px; height: 100px;
+      top: -30px;
+      right: -30px;
+      width: 100px;
+      height: 100px;
       background: rgba(219, 39, 119, 0.08);
       border-radius: 50%;
     }
@@ -107,15 +123,25 @@
     }
 
     .ap-badge .dot {
-      width: 6px; height: 6px;
+      width: 6px;
+      height: 6px;
       background: #be185d;
       border-radius: 50%;
       animation: pulse 1.5s infinite;
     }
 
     @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50%       { opacity: 0.5; transform: scale(0.8); }
+
+      0%,
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      50% {
+        opacity: 0.5;
+        transform: scale(0.8);
+      }
     }
 
     .timer-label {
@@ -137,8 +163,14 @@
       transition: color 0.3s;
     }
 
-    #countdown.warning { color: #dc2626; }
-    #countdown.offline { color: #9ca3af; font-size: 24px; }
+    #countdown.warning {
+      color: #dc2626;
+    }
+
+    #countdown.offline {
+      color: #9ca3af;
+      font-size: 24px;
+    }
 
     .timer-desc {
       font-size: 13px;
@@ -236,7 +268,8 @@
       margin-bottom: 24px;
     }
 
-    .divider::before, .divider::after {
+    .divider::before,
+    .divider::after {
       content: '';
       flex: 1;
       height: 1px;
@@ -362,12 +395,21 @@
 
     /* ─── Responsive ─── */
     @media (max-width: 480px) {
-      .container { padding: 24px 20px; }
-      #countdown { font-size: 42px; }
-      .info-grid { grid-template-columns: 1fr; }
+      .container {
+        padding: 24px 20px;
+      }
+
+      #countdown {
+        font-size: 42px;
+      }
+
+      .info-grid {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
+
 <body>
   <div class="container">
     <div class="header">
@@ -415,7 +457,7 @@
         Hapus semua konfigurasi WiFi dan FTP. Perangkat akan reboot dan masuk ke Setup Mode.
       </p>
       <form id="reset-form">
-        <input type="password" id="reset-pwd" placeholder="Masukkan password admin untuk reset" />
+        <input type="password" id="reset-pwd" placeholder="Masukkan password...." />
         <button type="submit" class="btn-reset" id="reset-btn">🗑 Reset ke Factory Settings</button>
       </form>
       <div class="notification" id="notif-reset"></div>
@@ -425,7 +467,7 @@
   </div>
 
   <script>
-    const TOTAL_SECONDS = 300; // 5 minutes default
+    const TOTAL_SECONDS = 120; // 2 minutes default
     let remainingSeconds = TOTAL_SECONDS;
     let countdownInterval = null;
 
@@ -511,10 +553,10 @@
     setInterval(fetchApStatus, 30000);
 
     // Factory Reset
-    document.getElementById('reset-form').addEventListener('submit', function(e) {
+    document.getElementById('reset-form').addEventListener('submit', function (e) {
       e.preventDefault();
-      const pwd  = document.getElementById('reset-pwd').value;
-      const btn  = document.getElementById('reset-btn');
+      const pwd = document.getElementById('reset-pwd').value;
+      const btn = document.getElementById('reset-btn');
       const notif = document.getElementById('notif-reset');
 
       btn.disabled = true;
@@ -526,25 +568,26 @@
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'password=' + encodeURIComponent(pwd)
       })
-      .then(res => {
-        if (res.ok) {
-          notif.textContent = '✅ Reset berhasil. Perangkat sedang reboot...';
-          notif.className = 'notification success';
-          setTimeout(() => window.location.reload(), 4000);
-        } else {
-          notif.textContent = '❌ Password salah atau reset gagal.';
+        .then(res => {
+          if (res.ok) {
+            notif.textContent = '✅ Reset berhasil. Perangkat sedang reboot...';
+            notif.className = 'notification success';
+            setTimeout(() => window.location.reload(), 4000);
+          } else {
+            notif.textContent = '❌ Password salah atau reset gagal.';
+            notif.className = 'notification error';
+            btn.disabled = false;
+            btn.textContent = '🗑 Reset ke Factory Settings';
+          }
+        })
+        .catch(() => {
+          notif.textContent = '❌ Tidak dapat terhubung ke perangkat.';
           notif.className = 'notification error';
           btn.disabled = false;
           btn.textContent = '🗑 Reset ke Factory Settings';
-        }
-      })
-      .catch(() => {
-        notif.textContent = '❌ Tidak dapat terhubung ke perangkat.';
-        notif.className = 'notification error';
-        btn.disabled = false;
-        btn.textContent = '🗑 Reset ke Factory Settings';
-      });
+        });
     });
   </script>
 </body>
+
 </html>
