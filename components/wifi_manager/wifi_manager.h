@@ -1,6 +1,13 @@
 #pragma once
 
+#include <stdbool.h>
 #include "esp_err.h"
+
+/**
+ * @brief Mengecek apakah WiFi saat ini terhubung (mendapatkan IP).
+ * @return true jika terhubung, false jika terputus
+ */
+bool wifi_manager_is_connected(void);
 
 /**
  * @brief Inisialisasi dan mulai koneksi Wi-Fi (mode Station).

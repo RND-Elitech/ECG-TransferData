@@ -13,8 +13,11 @@ static const char *TAG = "uploader";
 
 /* State internal modul */
 static uploader_config_t s_cfg = {0};
+static volatile bool g_is_uploading = false;
+static volatile esp_err_t s_last_upload_status = ESP_OK;
 
-
+bool uploader_is_busy(void) { return g_is_uploading; }
+esp_err_t uploader_get_last_status(void) { return s_last_upload_status; }
 
 /* ─── Helper: cek apakah file adalah file ECG yang valid ─── */
 static bool _is_valid_ecg_file(const char *name)
@@ -25,6 +28,22 @@ static bool _is_valid_ecg_file(const char *name)
 }
 
 /* ─── Public API ─── */
+
+static void _force_delete_folder(const char *folder_path) {
+    DIR *d = opendir(folder_path);
+    if (!d) return;
+    struct dirent *entry;
+    while ((entry = readdir(d)) != NULL) {
+        if (entry->d_type == DT_REG) {
+            char file_path[768];
+            snprintf(file_path, sizeof(file_path), "%s/%s", folder_path, entry->d_name);
+            unlink(file_path);
+        }
+    }
+    closedir(d);
+    rmdir(folder_path);
+    ESP_LOGI("uploader", "Folder %s dan isinya dihapus agar bisa coba lagi.", folder_path);
+}
 
 void uploader_init(const uploader_config_t *cfg)
 {
@@ -50,7 +69,7 @@ esp_err_t uploader_run(void)
     if (!dir) {
         ESP_LOGE(TAG, "Gagal membuka direktori: %s", s_cfg.base_path);
         if (needs_remount) storage_manager_expose_to_usb();
-        return ESP_FAIL;
+        return UPLOADER_ERR_NO_FILES;
     }
 
     struct dirent *entry;
@@ -73,7 +92,7 @@ esp_err_t uploader_run(void)
     if (strlen(latest_folder) == 0) {
         ESP_LOGE(TAG, "Tidak ada folder ecg_archive di %s", s_cfg.base_path);
         if (needs_remount) storage_manager_expose_to_usb();
-        return ESP_FAIL;
+        return UPLOADER_ERR_NO_FILES;
     }
 
     /* Upload semua file di folder tersebut */
@@ -103,8 +122,9 @@ esp_err_t uploader_run(void)
     if (ftp->ftpClientConnect(s_cfg.ftp_host, s_cfg.ftp_port, &ftp_ctrl) != 1) {
         ESP_LOGE(TAG, "Koneksi FTP gagal (Mungkin Host kosong atau tidak terjangkau)");
         closedir(subdir);
+        _force_delete_folder(folder_path); // Hapus file yang tertahan
         if (needs_remount) storage_manager_expose_to_usb();
-        return ESP_FAIL;
+        return UPLOADER_ERR_FTP_CONN;
     }
 
     ESP_LOGI(TAG, "Login FTP menggunakan %s...", s_cfg.ftp_user);
@@ -112,8 +132,9 @@ esp_err_t uploader_run(void)
         ESP_LOGE(TAG, "Login FTP gagal untuk user: %s", s_cfg.ftp_user);
         ftp->ftpClientQuit(ftp_ctrl);
         closedir(subdir);
+        _force_delete_folder(folder_path); // Hapus file yang tertahan
         if (needs_remount) storage_manager_expose_to_usb();
-        return ESP_FAIL;
+        return UPLOADER_ERR_FTP_LOGIN;
     }
 
     while ((entry = readdir(subdir)) != NULL) {
@@ -126,28 +147,27 @@ esp_err_t uploader_run(void)
         ESP_LOGI(TAG, "Mengunggah via FTP: %s", entry->d_name);
         if (ftp->ftpClientPut(file_path, entry->d_name, FTP_CLIENT_BINARY, ftp_ctrl) == 1) {
             ESP_LOGI(TAG, "Upload FTP sukses, hapus file: %s", file_path);
-            unlink(file_path);
             success++;
         } else {
             ESP_LOGE(TAG, "Upload FTP gagal untuk file: %s", file_path);
             fail++;
         }
+        unlink(file_path); // Selalu hapus file, baik upload sukses maupun gagal
     }
     closedir(subdir);
 
     ftp->ftpClientQuit(ftp_ctrl);
 
     if (!found) {
-        ESP_LOGE(TAG, "Tidak ada file valid di %s", folder_path);
+        ESP_LOGW(TAG, "Tidak ada file valid di %s, menghapus folder kosong.", folder_path);
+        rmdir(folder_path);
         if (needs_remount) storage_manager_expose_to_usb();
-        return ESP_FAIL;
+        return UPLOADER_ERR_NO_FILES;
     }
 
-    if (success > 0 && fail == 0) {
-        ESP_LOGI(TAG, "Semua %d file terupload. Hapus folder %s", success, folder_path);
+    if (success > 0 || fail > 0) {
+        ESP_LOGI(TAG, "Proses selesai. Sukses: %d, Gagal: %d. Folder %s akan dihapus.", success, fail, folder_path);
         rmdir(folder_path);
-    } else {
-        ESP_LOGW(TAG, "Selesai. Sukses: %d, Gagal: %d", success, fail);
     }
 
     if (needs_remount) {
@@ -155,18 +175,22 @@ esp_err_t uploader_run(void)
         storage_manager_expose_to_usb();
     }
 
-    return (fail == 0) ? ESP_OK : ESP_FAIL;
+    return (fail == 0) ? ESP_OK : UPLOADER_ERR_TRANSFER;
 }
 
 /* ─── Background task wrapper ─── */
 static void _upload_task(void *pvParameters)
 {
+    g_is_uploading = true;
     esp_err_t ret = uploader_run();
+    s_last_upload_status = ret;
+    
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "Upload selesai: semua file berhasil dikirim.");
     } else {
         ESP_LOGW(TAG, "Upload selesai: ada file yang gagal dikirim.");
     }
+    g_is_uploading = false;
     vTaskDelete(NULL);
 }
 

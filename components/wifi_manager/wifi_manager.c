@@ -21,6 +21,11 @@ static EventGroupHandle_t s_wifi_event_group = NULL;
 static esp_netif_t *s_sta_netif = NULL;
 static esp_netif_t *s_ap_netif  = NULL;
 static bool s_wifi_initialized  = false;
+static volatile bool s_is_connected = false;
+
+bool wifi_manager_is_connected(void) {
+    return s_is_connected;
+}
 
 static void _init_wifi_if_needed(void) {
     if (!s_wifi_initialized) {
@@ -40,13 +45,16 @@ static void wifi_sta_event_handler(void *arg, esp_event_base_t event_base,
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        ESP_LOGW(TAG, "Wi-Fi terputus (tidak mencoba ulang — timeout akan handle)");
+        s_is_connected = false;
+        ESP_LOGW(TAG, "Wi-Fi terputus! Mencoba menyambung kembali (Auto-Reconnect)...");
+        esp_wifi_connect();
         if (s_wifi_event_group) {
             xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
         }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
+        s_is_connected = true;
         if (s_wifi_event_group) {
             xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
         }

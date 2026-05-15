@@ -14,6 +14,7 @@ Program ini memungkinkan ESP32 untuk:
 - Mengelola penyimpanan data pada **SD Card** atau **Internal SPI Flash**.
 - Mengunggah file data EKG (format `.XML`, `.JPG`, `.BMP`) ke server FTP secara otomatis.
 - Mendeteksi kondisi idle USB (mesin EKG selesai rekam) dan memicu upload otomatis.
+- **Auto-Reconnect WiFi**: Secara otomatis menyambung kembali ke jaringan jika koneksi terputus di tengah jalan tanpa perlu restart.
 
 ### 2. Komponen Kunci
 - **TinyUSB (MSC Storage)**: Mengelola deskriptor USB dan protokol Mass Storage.
@@ -32,11 +33,11 @@ Berikut adalah visualisasi apa yang terjadi antara Perawat (User), Mesin EKG, da
     |-- 1. Simpan Rekam EKG -->|                                 |                             |
     |                          |-- 2. Tulis Data (Write) ------->|                             |
     |                          |                                 | (Status: Intercept Aktif)   |
-    |                          |                                 | (LED: Mati/Putih Redup)     |
+    |                          |                                 | (LED: Putih Solid)          |
     |                          |   (Penulisan byte terakhir)     |                             |
     |                          |-- 3. Mesin Berhenti Menulis --->|                             |
     |                          |                                 | (Safeguard 5 Detik mulai)   |
-    |                          |                                 | (LED: Kuning Kedip Lambat)  |
+    |                          |                                 | (LED: Biru Kedip Lambat)    |
     |                          |                                 |                             |
     |                          |   (Jika hening 5 detik tuntas)  |                             |
     |                          |                                 |-- 4. Ambil alih akses USB   |
@@ -74,7 +75,9 @@ Dongle menggunakan Smart RGB LED (WS2812/NeoPixel) sebagai indikator sistem terp
 | **Biru** | Berkedip Lambat | **Safeguard**: Data dari EKG terdeteksi! Menunggu jeda aman 5 detik. |
 | **Biru** | Berkedip Cepat | **Uploading**: Mengunggah data EKG di latar belakang menuju Server FTP. |
 | **Hijau** | Menyala Solid (2 Detik) | **Upload Sukses**: Pengiriman file berhasil, file sumber telah dihapus. Sistem akan kembali ke Standby. |
-| **Merah** | Menyala Solid | **Error**: Terjadi kesalahan (WiFi putus atau kredensial FTP gagal). |
+| **Merah** | 1x Kedip Berulang | **Error WiFi / Offline**: Gagal terkoneksi atau koneksi WiFi terputus. Alat akan terus mencoba reconnect di background. |
+| **Merah** | 2x Kedip Berulang | **Error FTP Login**: Host FTP tidak terjangkau atau kredensial salah. File di storage akan dihapus agar bisa mencoba lagi. |
+| **Merah** | 3x Kedip Berulang | **Error Transfer**: Gagal saat mengirim file (koneksi putus). File tetap dihapus dari storage untuk mencegah penumpukan. |
 
 ---
 
@@ -151,3 +154,30 @@ Semua konfigurasi utama terpusat dalam variabel global di bagian atas file `tusb
 ## Persyaratan Perangkat Keras
 - ESP32-S2 atau ESP32-S3 (memiliki dukungan USB OTG).
 - Slot SD Card atau Flash eksternal.
+
+---
+
+## Dokumentasi Developer: Logika Error Handling & Indikator LED
+
+Sistem ini dirancang untuk beroperasi secara mandiri (*headless*), sehingga indikator LED dan penanganan error sangat krusial:
+
+### 1. Mekanisme Pelacakan Status Upload
+Proses upload berjalan di *background task* FreeRTOS yang terpisah dari *idle detector*. Untuk sinkronisasi status:
+- Modul `uploader` menggunakan flag internal `g_is_uploading` dan `s_last_upload_status`.
+- Fungsi API disediakan: `uploader_is_busy()` dan `uploader_get_last_status()`.
+- `idle_detector_task` melakukan polling pada flag tersebut setelah memicu `uploader_trigger()`.
+
+### 2. Penanganan Error & Pembersihan Otomatis
+Sistem memiliki pola kedipan warna merah spesifik untuk memudahkan *troubleshooting*:
+- **1x Kedip (WiFi Fail / Offline)**: Gagal terkoneksi atau WiFi terputus. Sistem melakukan **Auto-Reconnect** secara otomatis. Jika terjadi saat Standby, indikator ini akan muncul hingga WiFi kembali normal.
+- **2x Kedip (FTP Connect/Login Fail)**: Masalah pada server FTP. Untuk mencegah file "nyangkut", sistem akan **menghapus folder ecg_archive** secara otomatis agar mesin EKG bisa mencoba mengirim ulang data segar.
+- **3x Kedip (Transfer Fail)**: Koneksi putus saat transfer byte. File tetap dihapus demi kebersihan storage.
+
+### 3. Deteksi File Kosong (Silent Fallback)
+Jika sistem mendeteksi aktivitas tulis (Idle Trigger) namun ternyata tidak ada file EKG valid yang ditemukan (misal hanya penulisan metadata sistem), uploader akan berhenti secara diam-diam (*Silent*) dan kembali ke mode Standby tanpa memicu indikator error Merah, guna menghindari kebingungan pengguna (*False Alarm*).
+
+### 3. Hardware Activity Intercept (Linker Wrap)
+Untuk mendeteksi kapan mesin EKG selesai menulis data tanpa bergantung pada *cache* sistem operasi, sistem menggunakan teknik *linker wrapping*:
+- Fungsi driver asli `sdmmc_write_sectors` dibungkus menjadi `__wrap_sdmmc_write_sectors`.
+- Setiap instruksi tulis fisik akan memperbarui `g_last_sd_activity_ms`.
+- Hal ini memastikan masa tenang 5 detik benar-benar dihitung dari byte terakhir yang ditulis ke disk fisik.

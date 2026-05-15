@@ -1,6 +1,13 @@
 #pragma once
 
+#include <stdbool.h>
 #include "esp_err.h"
+
+// Custom Error Codes untuk modul Uploader
+#define UPLOADER_ERR_FTP_CONN   0x101
+#define UPLOADER_ERR_FTP_LOGIN  0x102
+#define UPLOADER_ERR_TRANSFER   0x103
+#define UPLOADER_ERR_NO_FILES   0x104
 
 /**
  * @brief Konfigurasi untuk modul uploader.
@@ -42,3 +49,15 @@ esp_err_t uploader_run(void);
  * @param ctx Tidak digunakan, bisa NULL
  */
 void uploader_trigger(void *ctx);
+
+/**
+ * @brief Mengecek apakah proses upload sedang berjalan.
+ * @return true jika sibuk, false jika selesai
+ */
+bool uploader_is_busy(void);
+
+/**
+ * @brief Mendapatkan status eksekusi upload terakhir.
+ * @return ESP_OK, UPLOADER_ERR_FTP_CONN, UPLOADER_ERR_FTP_LOGIN, atau UPLOADER_ERR_TRANSFER
+ */
+esp_err_t uploader_get_last_status(void);

@@ -40,7 +40,9 @@ typedef enum {
   LED_STANDBY,         // Putih Solid — Standby
   LED_WIFI_CONNECTING, // Putih Berkedip Cepat — Mencari WiFi
   LED_AP_MODE,         // Putih Berkedip Lambat — Mode Konfigurasi/AP
-  LED_ERROR,           // Merah Solid — Error
+  LED_ERROR_WIFI,      // Merah Berkedip 1x — WiFi Gagal
+  LED_ERROR_FTP,       // Merah Berkedip 2x — FTP Koneksi/Login Gagal
+  LED_ERROR_UPLOAD,    // Merah Berkedip 3x — Transfer File Gagal
   LED_BLINK_SLOW,      // Biru Berkedip Lambat — Safeguard
   LED_BLINK_FAST,      // Biru Berkedip Cepat — Uploading
   LED_ON_SOLID,        // Hijau Menyala Terus — Sukses
@@ -66,7 +68,14 @@ static void led_task(void *arg) {
   led_strip_clear(led_strip);
 
   while (1) {
-    switch (s_led_state) {
+    led_state_t current_state = s_led_state;
+
+    // Jika status harusnya standby tapi WiFi terputus, ganti ke indikator error WiFi
+    if (current_state == LED_STANDBY && !wifi_manager_is_connected()) {
+        current_state = LED_ERROR_WIFI;
+    }
+
+    switch (current_state) {
     case LED_OFF:
       led_strip_clear(led_strip);
       vTaskDelay(pdMS_TO_TICKS(100));
@@ -93,11 +102,35 @@ static void led_task(void *arg) {
       led_strip_clear(led_strip);
       vTaskDelay(pdMS_TO_TICKS(500));
       break;
-    case LED_ERROR:
-      // Merah Solid Maksimal
+    case LED_ERROR_WIFI:
+      // Merah 1x Kedipan (WiFi Error)
       led_strip_set_pixel(led_strip, 0, 255, 0, 0);
       led_strip_refresh(led_strip);
-      vTaskDelay(pdMS_TO_TICKS(100));
+      vTaskDelay(pdMS_TO_TICKS(200));
+      led_strip_clear(led_strip);
+      vTaskDelay(pdMS_TO_TICKS(800));
+      break;
+    case LED_ERROR_FTP:
+      // Merah 2x Kedipan (FTP Conn/Login Error)
+      for (int i = 0; i < 2; i++) {
+        led_strip_set_pixel(led_strip, 0, 255, 0, 0);
+        led_strip_refresh(led_strip);
+        vTaskDelay(pdMS_TO_TICKS(200));
+        led_strip_clear(led_strip);
+        vTaskDelay(pdMS_TO_TICKS(200));
+      }
+      vTaskDelay(pdMS_TO_TICKS(600));
+      break;
+    case LED_ERROR_UPLOAD:
+      // Merah 3x Kedipan (Upload File Error)
+      for (int i = 0; i < 3; i++) {
+        led_strip_set_pixel(led_strip, 0, 255, 0, 0);
+        led_strip_refresh(led_strip);
+        vTaskDelay(pdMS_TO_TICKS(200));
+        led_strip_clear(led_strip);
+        vTaskDelay(pdMS_TO_TICKS(200));
+      }
+      vTaskDelay(pdMS_TO_TICKS(400));
       break;
     case LED_BLINK_SLOW:
       // Biru Berkedip Lambat (Safeguard)
@@ -207,16 +240,32 @@ static void idle_detector_task(void *arg) {
 
         s_led_state = LED_BLINK_FAST;
         uploader_trigger(NULL);
+        vTaskDelay(pdMS_TO_TICKS(500)); // Beri waktu uploader untuk start
 
-        // Tunggu sampai storage dikembalikan ke USB Host setelah upload
+        // Tunggu sampai uploader selesai bekerja
         for (int w = 0; w < 300; w++) {
           vTaskDelay(pdMS_TO_TICKS(1000));
-          if (storage_manager_in_use_by_usb())
+          if (!uploader_is_busy())
             break;
         }
 
-        s_led_state = LED_ON_SOLID;
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        // Tampilkan indikator hasil upload
+        esp_err_t upload_status = uploader_get_last_status();
+        if (upload_status == ESP_OK) {
+            s_led_state = LED_ON_SOLID;
+            vTaskDelay(pdMS_TO_TICKS(2000));
+        } else if (upload_status == UPLOADER_ERR_NO_FILES) {
+            // Abaikan tanpa indikator error, langsung kembali ke standby
+            ESP_LOGI(IDLE_TAG, "Tidak ada file ECG valid untuk diupload. Mengabaikan.");
+        } else if (upload_status == UPLOADER_ERR_FTP_CONN || upload_status == UPLOADER_ERR_FTP_LOGIN) {
+            s_led_state = LED_ERROR_FTP;
+            vTaskDelay(pdMS_TO_TICKS(4000));
+        } else {
+            // Error saat transfer file individu (atau error lain)
+            s_led_state = LED_ERROR_UPLOAD;
+            vTaskDelay(pdMS_TO_TICKS(4000));
+        }
+        
         s_led_state = LED_STANDBY;
         ESP_LOGI(IDLE_TAG, "Kembali ke mode siaga.");
       }
@@ -317,7 +366,7 @@ static void ap_timeout_task(void *arg) {
     vTaskDelay(pdMS_TO_TICKS(1000));
     g_ap_timeout_sec--;
   }
-  ESP_LOGI("ap_timeout", "Waktu 5 menit habis. Mematikan AP mode...");
+  ESP_LOGI("ap_timeout", "Waktu 2 menit habis. Mematikan AP mode...");
   web_server_set_dashboard_mode(false);
   dns_server_stop();
   esp_wifi_set_mode(WIFI_MODE_STA);
@@ -515,7 +564,8 @@ void app_main(void) {
   ret = wifi_manager_start(s_wifi_ssid, s_wifi_pass, 30000);
 
   if (ret != ESP_OK) {
-    s_led_state = LED_ERROR;
+    s_led_state = LED_ERROR_WIFI;
+    vTaskDelay(pdMS_TO_TICKS(4000)); // Tampilkan error pattern lebih lama (4 detik) sebelum beralih
     /*
      * Koneksi WiFi GAGAL — masuk Mode AP agar pengguna
      * bisa memasukkan konfigurasi baru melalui browser.
