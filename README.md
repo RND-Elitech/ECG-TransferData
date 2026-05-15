@@ -17,8 +17,9 @@ Program ini memungkinkan ESP32 untuk:
 
 ### 2. Komponen Kunci
 - **TinyUSB (MSC Storage)**: Mengelola deskriptor USB dan protokol Mass Storage.
-- **Wi-Fi & Networking**: Menghubungkan ESP32 ke jaringan Wi-Fi.
-- **HTTP Client**: Mengirim file ke API server dengan metode `POST` multipart/form-data.
+- **Wi-Fi & Networking**: Menghubungkan ESP32 ke jaringan Wi-Fi rumah sakit/klinik.
+- **FTP Client**: Mengirim file data EKG secara otomatis ke server FTP di background.
+- **Hardware Interceptor**: Menggunakan Linker Wrap GCC (`--wrap=sdmmc_write_sectors`) untuk melacak aktivitas tulis (*write*) kartu memori secara langsung.
 - **Console REPL**: Antarmuka CLI melalui UART untuk debugging dan kontrol manual.
 
 ## Diagram Alur (Idle Detection & Auto-Upload)
@@ -29,23 +30,23 @@ Berikut adalah visualisasi apa yang terjadi antara Perawat (User), Mesin EKG, da
 [Perawat]                 [Mesin EKG]                     [Dongle ESP32]                 [Server FTP]
     |                          |                                 |                             |
     |-- 1. Simpan Rekam EKG -->|                                 |                             |
-    |                          |-- 2. Tulis File ke USB -------->|                             |
-    |                          |                                 | (Status: Active / LED OFF)  |
+    |                          |-- 2. Tulis Data (Write) ------->|                             |
+    |                          |                                 | (Status: Intercept Aktif)   |
+    |                          |                                 | (LED: Mati/Putih Redup)     |
+    |                          |   (Penulisan byte terakhir)     |                             |
+    |                          |-- 3. Mesin Berhenti Menulis --->|                             |
+    |                          |                                 | (Safeguard 5 Detik mulai)   |
+    |                          |                                 | (LED: Kuning Kedip Lambat)  |
     |                          |                                 |                             |
-    |                          |   (Mesin selesai menulis)       |                             |
-    |                          |-- 3. USB Idle ----------------->|                             |
-    |                          |                                 | (Safeguard 30 Detik mulai)  |
-    |                          |                                 | (LED Kedip Lambat)          |
-    |                          |                                 |                             |
-    |                          |   (Jika idle 30 detik tuntas)   |                             |
+    |                          |   (Jika hening 5 detik tuntas)  |                             |
     |                          |                                 |-- 4. Ambil alih akses USB   |
-    |                          |                                 |-- 5. Upload File (LED Cepat)--> 
-    |                          |                                 |                             |
+    |                          |                                 |-- 5. Upload via FTP (Port 21)-->
+    |                          |                                 | (LED: Biru Kedip Cepat)     |
     |                          |                                 |<-- 6. Upload Sukses --------|
     |                          |                                 |-- 7. Hapus File Internal    |
     |                          |                                 |-- 8. Kembalikan akses USB   |
-    |                          |                                 | (LED Solid 2 Detik -> OFF)  |
-    |                          |                                 |                             |
+    |                          |                                 | (LED: Hijau 2 Detik)        |
+    |                          |                                 | (Sistem Kembali Standby)    |
 ```
 
 ---
@@ -61,16 +62,19 @@ Perangkat dilengkapi dengan dua fungsi kontrol melalui tombol fisik pada ESP32:
 
 ---
 
-## Indikator LED (GPIO 48)
+## Indikator Smart RGB LED (GPIO 48)
 
-LED terhubung ke **GPIO 48** sebagai indikator status operasional secara *real-time*:
+Dongle menggunakan Smart RGB LED (WS2812/NeoPixel) sebagai indikator sistem terpusat. LED ini memberikan status komunikasi jaringan sekaligus proses transmisi file:
 
-| Pola LED | Kondisi |
-| :--- | :--- |
-| **Mati (OFF)** | Normal — Idle, menunggu aktivitas EKG |
-| **Berkedip Lambat** (1 Hz) | Safeguard aktif — Menunggu 30 detik konfirmasi USB idle |
-| **Berkedip Cepat** (5 Hz) | Sedang upload file ke server FTP |
-| **Menyala Solid** (2 detik) | Upload selesai berhasil, kembali ke mode idle |
+| Warna LED | Pola Kedip | Status Sistem |
+| :--- | :--- | :--- |
+| **Putih** | Berkedip Cepat | **Connecting**: Sedang berusaha terhubung ke jaringan WiFi rumah sakit. |
+| **Putih** | Berkedip Lambat | **AP Mode**: Dongle masuk ke mode Konfigurasi (WiFi `ECG-Gateway-XXXX` memancar). Buka portal `192.168.4.1` dari HP Anda. |
+| **Putih** | Menyala Solid | **Standby**: Perangkat sudah siap pakai dan terhubung ke jaringan. Menunggu mesin EKG mengirim data. |
+| **Biru** | Berkedip Lambat | **Safeguard**: Data dari EKG terdeteksi! Menunggu jeda aman 5 detik. |
+| **Biru** | Berkedip Cepat | **Uploading**: Mengunggah data EKG di latar belakang menuju Server FTP. |
+| **Hijau** | Menyala Solid (2 Detik) | **Upload Sukses**: Pengiriman file berhasil, file sumber telah dihapus. Sistem akan kembali ke Standby. |
+| **Merah** | Menyala Solid | **Error**: Terjadi kesalahan (WiFi putus atau kredensial FTP gagal). |
 
 ---
 
@@ -102,19 +106,21 @@ Semua konfigurasi utama terpusat dalam variabel global di bagian atas file `tusb
 | Variabel | Nilai Default | Keterangan |
 | :--- | :--- | :--- |
 | `g_ap_timeout_sec`    | `120`   | Durasi default WiFi AP aktif (detik) |
-| `IDLE_SAFEGUARD_SEC`  | `30`    | Jeda aman sebelum upload otomatis (detik) |
-| `LED_PIN`             | `48`    | GPIO pin indikator LED status upload |
+| `IDLE_SAFEGUARD_MS`   | `5000`  | Jeda aman sebelum upload otomatis (5 detik) |
+| `LED_PIN`             | `48`    | GPIO pin indikator Smart RGB LED WS2812 |
 
 ---
 
 
 ## Format File yang Didukung untuk Upload
 
-| Ekstensi | MIME Type | Keterangan |
-| :--- | :--- | :--- |
-| `.xml` / `.XML` | `application/xml` | Data rekaman EKG (format utama) |
-| `.jpg` / `.JPG` | `image/jpeg` | Gambar JPEG |
-| `.bmp` / `.BMP` | `image/bmp` | Gambar Bitmap |
+| Ekstensi | Keterangan |
+| :--- | :--- |
+| `.xml` / `.XML` | Data rekaman EKG (format utama) |
+| `.jpg` / `.JPG` | Gambar JPEG (Snapshot) |
+| `.bmp` / `.BMP` | Gambar Bitmap |
+
+*(Catatan: Penentuan MIME type tidak lagi dibutuhkan karena upload kini menggunakan protokol FTP).*
 
 ---
 

@@ -11,6 +11,7 @@
 
 #include "console_cmd.h"
 #include "dns_server.h"
+#include "led_strip.h"
 #include "mdns.h"
 #include "sdmmc_cmd.h"
 #include "storage_manager.h"
@@ -23,53 +24,101 @@
 #define LED_PIN GPIO_NUM_48 ///< Indikator status upload
 
 /* ─────────────────────────────────────────────────────────────
- * LED Indicator Helpers
+ * LED Indicator (Smart RGB LED WS2812 — GPIO 48)
  * State:
- *   OFF          = Idle / Normal
- *   BLINK LAMBAT = Menunggu Idle timeout (safeguard 30 detik)
- *   BLINK CEPAT  = Sedang upload ke FTP
- *   ON SOLID     = Upload selesai (2 detik), lalu kembali OFF
+ *   OFF              = Mati
+ *   STANDBY          = Putih Solid — Terhubung WiFi, siap menerima data EKG
+ *   WIFI_CONNECTING  = Putih Berkedip Cepat — Sedang mencari/konek ke WiFi
+ *   AP_MODE          = Putih Berkedip Lambat — Mode Konfigurasi (AP aktif)
+ *   ERROR            = Merah Solid — Koneksi WiFi / FTP gagal
+ *   BLINK_SLOW       = Biru Berkedip Lambat — Safeguard 5 detik aktif
+ *   BLINK_FAST       = Biru Berkedip Cepat — Sedang upload ke FTP
+ *   ON_SOLID         = Hijau Solid (2 detik) — Upload sukses
  * ───────────────────────────────────────────────────────────── */
 typedef enum {
   LED_OFF = 0,
-  LED_BLINK_SLOW, // 1 Hz — fase safeguard
-  LED_BLINK_FAST, // 5 Hz — fase upload
-  LED_ON_SOLID,   // menyala penuh
+  LED_STANDBY,         // Putih Solid — Standby
+  LED_WIFI_CONNECTING, // Putih Berkedip Cepat — Mencari WiFi
+  LED_AP_MODE,         // Putih Berkedip Lambat — Mode Konfigurasi/AP
+  LED_ERROR,           // Merah Solid — Error
+  LED_BLINK_SLOW,      // Biru Berkedip Lambat — Safeguard
+  LED_BLINK_FAST,      // Biru Berkedip Cepat — Uploading
+  LED_ON_SOLID,        // Hijau Menyala Terus — Sukses
 } led_state_t;
 
 static volatile led_state_t s_led_state = LED_OFF;
 
 static void led_task(void *arg) {
-  gpio_config_t io = {
-      .pin_bit_mask = (1ULL << LED_PIN),
-      .mode = GPIO_MODE_OUTPUT,
-      .pull_up_en = GPIO_PULLUP_DISABLE,
-      .pull_down_en = GPIO_PULLDOWN_DISABLE,
-      .intr_type = GPIO_INTR_DISABLE,
+  /* Konfigurasi untuk Smart RGB LED (WS2812) via RMT */
+  led_strip_handle_t led_strip;
+  led_strip_config_t strip_config = {
+      .strip_gpio_num = LED_PIN,
+      .max_leds = 1, // Hanya ada 1 LED RGB di board
   };
-  gpio_config(&io);
-  gpio_set_level(LED_PIN, 0);
+  led_strip_rmt_config_t rmt_config = {
+      .resolution_hz = 10 * 1000 * 1000, // Resolusi 10MHz
+      .flags.with_dma = false,
+  };
+  ESP_ERROR_CHECK(
+      led_strip_new_rmt_device(&strip_config, &rmt_config, &led_strip));
+
+  // Matikan LED di awal
+  led_strip_clear(led_strip);
 
   while (1) {
     switch (s_led_state) {
     case LED_OFF:
-      gpio_set_level(LED_PIN, 0);
+      led_strip_clear(led_strip);
+      vTaskDelay(pdMS_TO_TICKS(100));
+      break;
+    case LED_STANDBY:
+      // Putih Terang (Standby)
+      led_strip_set_pixel(led_strip, 0, 255, 255, 255);
+      led_strip_refresh(led_strip);
+      vTaskDelay(pdMS_TO_TICKS(100));
+      break;
+    case LED_WIFI_CONNECTING:
+      // Putih Berkedip Cepat (Mencari WiFi)
+      led_strip_set_pixel(led_strip, 0, 255, 255, 255);
+      led_strip_refresh(led_strip);
+      vTaskDelay(pdMS_TO_TICKS(100));
+      led_strip_clear(led_strip);
+      vTaskDelay(pdMS_TO_TICKS(100));
+      break;
+    case LED_AP_MODE:
+      // Putih Berkedip Lambat (Mode AP/Config)
+      led_strip_set_pixel(led_strip, 0, 255, 255, 255);
+      led_strip_refresh(led_strip);
+      vTaskDelay(pdMS_TO_TICKS(500));
+      led_strip_clear(led_strip);
+      vTaskDelay(pdMS_TO_TICKS(500));
+      break;
+    case LED_ERROR:
+      // Merah Solid Maksimal
+      led_strip_set_pixel(led_strip, 0, 255, 0, 0);
+      led_strip_refresh(led_strip);
       vTaskDelay(pdMS_TO_TICKS(100));
       break;
     case LED_BLINK_SLOW:
-      gpio_set_level(LED_PIN, 1);
+      // Biru Berkedip Lambat (Safeguard)
+      led_strip_set_pixel(led_strip, 0, 0, 0, 255);
+      led_strip_refresh(led_strip);
       vTaskDelay(pdMS_TO_TICKS(500));
-      gpio_set_level(LED_PIN, 0);
+      led_strip_clear(led_strip);
       vTaskDelay(pdMS_TO_TICKS(500));
       break;
     case LED_BLINK_FAST:
-      gpio_set_level(LED_PIN, 1);
+      // Biru Berkedip Cepat Maksimal (Uploading)
+      led_strip_set_pixel(led_strip, 0, 0, 0, 255);
+      led_strip_refresh(led_strip);
       vTaskDelay(pdMS_TO_TICKS(100));
-      gpio_set_level(LED_PIN, 0);
+      led_strip_clear(led_strip);
       vTaskDelay(pdMS_TO_TICKS(100));
       break;
     case LED_ON_SOLID:
-      gpio_set_level(LED_PIN, 1);
+      // Hijau Menyala Terus Maksimal (Sukses)
+      led_strip_set_pixel(led_strip, 0, 0, 255, 0);
+      led_strip_refresh(led_strip);
       vTaskDelay(pdMS_TO_TICKS(100));
       break;
     }
@@ -117,8 +166,8 @@ esp_err_t __wrap_sdmmc_read_sectors(sdmmc_card_t *card, void *dst,
  *     maka bisa dipastikan mesin EKG benar-benar telah selesai.
  *  4. Ambil alih USB, eksekusi Upload.
  * ───────────────────────────────────────────────────────────── */
-#define IDLE_SAFEGUARD_MS 15000 // Jeda aman 15 detik setelah write terakhir
-#define IDLE_POLL_MS 500        // Cek setiap 500ms
+#define IDLE_SAFEGUARD_MS 5000 // Jeda aman 5 detik setelah write terakhir
+#define IDLE_POLL_MS 500       // Cek setiap 500ms
 
 static void idle_detector_task(void *arg) {
   static const char *IDLE_TAG = "idle_det";
@@ -140,7 +189,8 @@ static void idle_detector_task(void *arg) {
       if (time_since_last_activity < IDLE_SAFEGUARD_MS) {
         if (!is_monitoring_idle) {
           ESP_LOGI(IDLE_TAG,
-                   "Transfer data sedang berlangsung... Upload otomatis akan terpicu jika mesin hening total selama %d detik.",
+                   "Transfer data sedang berlangsung... Upload otomatis akan "
+                   "terpicu jika mesin hening total selama %d detik.",
                    IDLE_SAFEGUARD_MS / 1000);
           is_monitoring_idle = true;
         }
@@ -167,7 +217,7 @@ static void idle_detector_task(void *arg) {
 
         s_led_state = LED_ON_SOLID;
         vTaskDelay(pdMS_TO_TICKS(2000));
-        s_led_state = LED_OFF;
+        s_led_state = LED_STANDBY;
         ESP_LOGI(IDLE_TAG, "Kembali ke mode siaga.");
       }
     }
@@ -198,6 +248,7 @@ static void boot_btn_task(void *arg) {
         if (g_ap_timeout_sec <= 0) {
           // Aktifkan mode APSTA
           esp_wifi_set_mode(WIFI_MODE_APSTA);
+          s_led_state = LED_AP_MODE;
 
           // Siapkan dashboard portal
           web_server_set_dashboard_mode(true);
@@ -343,6 +394,7 @@ static bool load_config_from_nvs(void) {
  * konfigurasi di browser pengguna secara otomatis.
  * ───────────────────────────────────────────────────────────── */
 static void enter_ap_config_mode(void) {
+  s_led_state = LED_AP_MODE;
   ESP_LOGW(TAG, "=== Memasuki Mode Konfigurasi (AP + Captive Portal) ===");
   ESP_LOGW(TAG, "  Hubungkan HP/Laptop ke WiFi: ECG-Gateway-XXXX");
   ESP_LOGW(TAG, "  Buka browser: http://192.168.4.1");
@@ -416,12 +468,10 @@ static void run_normal_operation(void) {
   /* 10. Mulai task countdown AP Timeout */
   xTaskCreate(ap_timeout_task, "ap_timeout", 2048, NULL, 5, NULL);
 
-  /* 11. Mulai LED Indicator task */
-  xTaskCreate(led_task, "led_task", 2048, NULL, 3, NULL);
-
   /* 12. Mulai Idle Detector (auto-upload saat USB idle 30 detik) */
   xTaskCreate(idle_detector_task, "idle_det", 4096, NULL, 4, NULL);
 
+  s_led_state = LED_STANDBY;
   ESP_LOGI(TAG, "=== ECG Dongle Siap ===");
 }
 
@@ -430,6 +480,9 @@ static void run_normal_operation(void) {
  * ───────────────────────────────────────────────────────────── */
 void app_main(void) {
   ESP_LOGI(TAG, "=== ECG Dongle Booting ===");
+
+  /* Mulai LED Indicator Task paling awal */
+  xTaskCreate(led_task, "led_task", 2048, NULL, 3, NULL);
 
   /* Mulai task pemantau tombol */
   xTaskCreate(reset_btn_task, "reset_btn", 4096, NULL, 5, NULL);
@@ -458,9 +511,11 @@ void app_main(void) {
 
   /* 2. Coba koneksi WiFi (timeout 30 detik) */
   ESP_LOGI(TAG, "Menghubungkan ke WiFi SSID: '%s' ...", s_wifi_ssid);
+  s_led_state = LED_WIFI_CONNECTING;
   ret = wifi_manager_start(s_wifi_ssid, s_wifi_pass, 30000);
 
   if (ret != ESP_OK) {
+    s_led_state = LED_ERROR;
     /*
      * Koneksi WiFi GAGAL — masuk Mode AP agar pengguna
      * bisa memasukkan konfigurasi baru melalui browser.
