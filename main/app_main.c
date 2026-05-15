@@ -19,6 +19,57 @@
 #include "wifi_manager.h"
 
 #define RESET_BTN_PIN GPIO_NUM_1
+#define BOOT_BTN_PIN GPIO_NUM_0
+
+static void ap_timeout_task(void *arg);
+
+static void boot_btn_task(void *arg) {
+  gpio_config_t io_conf = {.pin_bit_mask = (1ULL << BOOT_BTN_PIN),
+                           .mode = GPIO_MODE_INPUT,
+                           .pull_up_en = 1,
+                           .pull_down_en = 0,
+                           .intr_type = GPIO_INTR_DISABLE};
+  gpio_config(&io_conf);
+
+  int press_count = 0;
+  while (1) {
+    if (gpio_get_level(BOOT_BTN_PIN) == 0) { // Ditekan (active low)
+      press_count++;
+      if (press_count >= 30) { // Tahan 3 detik
+        ESP_LOGW("boot_btn", "Tombol BOOT ditekan 3 detik. Mengaktifkan mode APSTA...");
+        
+        extern int32_t g_ap_timeout_sec;
+        if (g_ap_timeout_sec <= 0) {
+            // Aktifkan mode APSTA
+            esp_wifi_set_mode(WIFI_MODE_APSTA);
+            
+            // Siapkan dashboard portal
+            web_server_set_dashboard_mode(true);
+            dns_server_start();
+            
+            // Set durasi timeout (2 menit)
+            g_ap_timeout_sec = 120;
+            
+            // Create task timeout
+            xTaskCreate(ap_timeout_task, "ap_timeout", 2048, NULL, 5, NULL);
+        } else {
+            // Jika APSTA sedang aktif, perpanjang waktu saja
+            g_ap_timeout_sec = 120;
+            ESP_LOGI("boot_btn", "APSTA sudah aktif. Memperpanjang waktu timeout.");
+        }
+
+        // Tunggu sampai tombol dilepas untuk menghindari trigger berulang
+        while (gpio_get_level(BOOT_BTN_PIN) == 0) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        press_count = 0;
+      }
+    } else {
+      press_count = 0;
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+}
 
 static void reset_btn_task(void *arg) {
   gpio_config_t io_conf = {.pin_bit_mask = (1ULL << RESET_BTN_PIN),
@@ -254,8 +305,9 @@ static void run_normal_operation(void) {
 void app_main(void) {
   ESP_LOGI(TAG, "=== ECG Dongle Booting ===");
 
-  /* Mulai task pemantau tombol reset konfigurasi */
-  xTaskCreate(reset_btn_task, "reset_btn", 2048, NULL, 5, NULL);
+  /* Mulai task pemantau tombol */
+  xTaskCreate(reset_btn_task, "reset_btn", 4096, NULL, 5, NULL);
+  xTaskCreate(boot_btn_task, "boot_btn", 4096, NULL, 5, NULL);
 
   /* 1. Inisialisasi NVS dan event loop (prasyarat global) */
   esp_err_t ret = nvs_flash_init();
