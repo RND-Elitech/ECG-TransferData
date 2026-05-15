@@ -209,6 +209,13 @@ static esp_err_t handler_save(httpd_req_t *req) {
     parse_form_field(body, "ip_address",  ip_addr,    sizeof(ip_addr));
     parse_form_field(body, "subnet_mask", subnet,     sizeof(subnet));
     parse_form_field(body, "gateway",     gateway,    sizeof(gateway));
+
+    /* Tangkap data FTP dari body (Jangan lupa!) */
+    parse_form_field(body, "ftp_host",    ftp_host,   sizeof(ftp_host));
+    parse_form_field(body, "ftp_port",    ftp_port_s, sizeof(ftp_port_s));
+    parse_form_field(body, "ftp_user",    ftp_user,   sizeof(ftp_user));
+    parse_form_field(body, "ftp_pass",    ftp_pass,   sizeof(ftp_pass));
+    
     free(body);
 
     /* Validasi minimal */

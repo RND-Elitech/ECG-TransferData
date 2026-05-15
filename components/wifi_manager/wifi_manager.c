@@ -20,6 +20,17 @@ static const char *TAG = "wifi_manager";
 static EventGroupHandle_t s_wifi_event_group = NULL;
 static esp_netif_t *s_sta_netif = NULL;
 static esp_netif_t *s_ap_netif  = NULL;
+static bool s_wifi_initialized  = false;
+
+static void _init_wifi_if_needed(void) {
+    if (!s_wifi_initialized) {
+        s_sta_netif = esp_netif_create_default_wifi_sta();
+        s_ap_netif = esp_netif_create_default_wifi_ap();
+        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+        ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+        s_wifi_initialized = true;
+    }
+}
 
 /* ─────────────────────────────────────────────────────────────
  * Event Handler (STA mode)
@@ -49,11 +60,7 @@ esp_err_t wifi_manager_start(const char *ssid, const char *password,
                              uint32_t timeout_ms) {
     s_wifi_event_group = xEventGroupCreate();
 
-    s_sta_netif = esp_netif_create_default_wifi_sta();
-    s_ap_netif = esp_netif_create_default_wifi_ap();
-
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    _init_wifi_if_needed();
 
     /* Register event handlers */
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
@@ -125,11 +132,7 @@ esp_err_t wifi_manager_start_ap(void) {
     snprintf(ap_ssid, sizeof(ap_ssid), "MedLink-Dongle-%02X%02X",
              mac[4], mac[5]);
 
-    s_ap_netif = esp_netif_create_default_wifi_ap();
-    s_sta_netif = esp_netif_create_default_wifi_sta(); // Required for scanning
-
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    _init_wifi_if_needed();
 
     wifi_config_t ap_config = {
         .ap = {
@@ -155,14 +158,17 @@ esp_err_t wifi_manager_start_ap(void) {
  * ───────────────────────────────────────────────────────────── */
 void wifi_manager_stop(void) {
     esp_wifi_stop();
-    esp_wifi_deinit();
-    if (s_sta_netif) {
-        esp_netif_destroy(s_sta_netif);
-        s_sta_netif = NULL;
-    }
-    if (s_ap_netif) {
-        esp_netif_destroy(s_ap_netif);
-        s_ap_netif = NULL;
+    if (s_wifi_initialized) {
+        esp_wifi_deinit();
+        if (s_sta_netif) {
+            esp_netif_destroy(s_sta_netif);
+            s_sta_netif = NULL;
+        }
+        if (s_ap_netif) {
+            esp_netif_destroy(s_ap_netif);
+            s_ap_netif = NULL;
+        }
+        s_wifi_initialized = false;
     }
     ESP_LOGI(TAG, "WiFi dihentikan");
 }

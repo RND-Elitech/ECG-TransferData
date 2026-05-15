@@ -35,10 +35,10 @@ void uploader_init(const uploader_config_t *cfg);
 esp_err_t uploader_run(void);
 
 /**
- * @brief Callback yang digunakan oleh mqtt_manager sebagai handler perintah upload.
+ * @brief Trigger upload secara manual (mis. dari idle detector atau tombol).
  *
  * Fungsi ini akan menjalankan uploader_run() di background FreeRTOS task.
  *
- * @param ctx Konteks (harus berupa pointer ke mqtt_manager_publish_upload_status)
+ * @param ctx Tidak digunakan, bisa NULL
  */
 void uploader_trigger(void *ctx);

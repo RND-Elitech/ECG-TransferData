@@ -12,6 +12,7 @@
 #include "console_cmd.h"
 #include "dns_server.h"
 #include "mdns.h"
+#include "sdmmc_cmd.h"
 #include "storage_manager.h"
 #include "uploader.h"
 #include "web_server.h"
@@ -19,6 +20,161 @@
 
 #define RESET_BTN_PIN GPIO_NUM_1
 #define BOOT_BTN_PIN GPIO_NUM_0
+#define LED_PIN GPIO_NUM_48 ///< Indikator status upload
+
+/* ─────────────────────────────────────────────────────────────
+ * LED Indicator Helpers
+ * State:
+ *   OFF          = Idle / Normal
+ *   BLINK LAMBAT = Menunggu Idle timeout (safeguard 30 detik)
+ *   BLINK CEPAT  = Sedang upload ke FTP
+ *   ON SOLID     = Upload selesai (2 detik), lalu kembali OFF
+ * ───────────────────────────────────────────────────────────── */
+typedef enum {
+  LED_OFF = 0,
+  LED_BLINK_SLOW, // 1 Hz — fase safeguard
+  LED_BLINK_FAST, // 5 Hz — fase upload
+  LED_ON_SOLID,   // menyala penuh
+} led_state_t;
+
+static volatile led_state_t s_led_state = LED_OFF;
+
+static void led_task(void *arg) {
+  gpio_config_t io = {
+      .pin_bit_mask = (1ULL << LED_PIN),
+      .mode = GPIO_MODE_OUTPUT,
+      .pull_up_en = GPIO_PULLUP_DISABLE,
+      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .intr_type = GPIO_INTR_DISABLE,
+  };
+  gpio_config(&io);
+  gpio_set_level(LED_PIN, 0);
+
+  while (1) {
+    switch (s_led_state) {
+    case LED_OFF:
+      gpio_set_level(LED_PIN, 0);
+      vTaskDelay(pdMS_TO_TICKS(100));
+      break;
+    case LED_BLINK_SLOW:
+      gpio_set_level(LED_PIN, 1);
+      vTaskDelay(pdMS_TO_TICKS(500));
+      gpio_set_level(LED_PIN, 0);
+      vTaskDelay(pdMS_TO_TICKS(500));
+      break;
+    case LED_BLINK_FAST:
+      gpio_set_level(LED_PIN, 1);
+      vTaskDelay(pdMS_TO_TICKS(100));
+      gpio_set_level(LED_PIN, 0);
+      vTaskDelay(pdMS_TO_TICKS(100));
+      break;
+    case LED_ON_SOLID:
+      gpio_set_level(LED_PIN, 1);
+      vTaskDelay(pdMS_TO_TICKS(100));
+      break;
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * SD Card Linker Wrappers (Interceptor)
+ * ───────────────────────────────────────────────────────────── */
+volatile uint32_t g_last_sd_activity_ms = 0;
+volatile bool g_has_new_writes = false;
+
+esp_err_t __real_sdmmc_write_sectors(sdmmc_card_t *card, const void *src,
+                                     size_t start_block, size_t block_count);
+esp_err_t __wrap_sdmmc_write_sectors(sdmmc_card_t *card, const void *src,
+                                     size_t start_block, size_t block_count) {
+  // Hanya catat jika USB Host (PC/Mesin EKG) yang melakukan akses
+  if (storage_manager_in_use_by_usb()) {
+    g_last_sd_activity_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    g_has_new_writes = true; // Tandai bahwa ada data baru yang ditulis
+  }
+  return __real_sdmmc_write_sectors(card, src, start_block, block_count);
+}
+
+esp_err_t __real_sdmmc_read_sectors(sdmmc_card_t *card, void *dst,
+                                    size_t start_block, size_t block_count);
+esp_err_t __wrap_sdmmc_read_sectors(sdmmc_card_t *card, void *dst,
+                                    size_t start_block, size_t block_count) {
+  if (storage_manager_in_use_by_usb()) {
+    // Tetap catat aktivitas baca agar waktu idle tidak meleset saat EKG sedang
+    // memverifikasi file
+    g_last_sd_activity_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
+  }
+  return __real_sdmmc_read_sectors(card, dst, start_block, block_count);
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Idle Detector Task (Physical Activity Based)
+ *
+ * Algoritma Baru (Hardware Intercept):
+ *  1. Pantau g_last_sd_activity_ms. Jika berubah, berarti mesin EKG sedang
+ * membaca/menulis.
+ *  2. Jika mesin EKG sibuk, LED mati (OFF).
+ *  3. Jika waktu sejak aktivitas terakhir mencapai 15 detik (Safeguard),
+ *     maka bisa dipastikan mesin EKG benar-benar telah selesai.
+ *  4. Ambil alih USB, eksekusi Upload.
+ * ───────────────────────────────────────────────────────────── */
+#define IDLE_SAFEGUARD_MS 15000 // Jeda aman 15 detik setelah write terakhir
+#define IDLE_POLL_MS 500        // Cek setiap 500ms
+
+static void idle_detector_task(void *arg) {
+  static const char *IDLE_TAG = "idle_det";
+  bool is_monitoring_idle = false;
+
+  while (1) {
+    // Cek apakah USB Host terhubung (secara kelistrikan/mounting)
+    if (!storage_manager_in_use_by_usb()) {
+      is_monitoring_idle = false;
+      vTaskDelay(pdMS_TO_TICKS(IDLE_POLL_MS));
+      continue;
+    }
+
+    uint32_t current_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    uint32_t time_since_last_activity = current_time - g_last_sd_activity_ms;
+
+    // Hanya mulai pantau masa tenang JIKA ADA PENULISAN (Write)
+    if (g_has_new_writes) {
+      if (time_since_last_activity < IDLE_SAFEGUARD_MS) {
+        if (!is_monitoring_idle) {
+          ESP_LOGI(IDLE_TAG,
+                   "Transfer data sedang berlangsung... Upload otomatis akan terpicu jika mesin hening total selama %d detik.",
+                   IDLE_SAFEGUARD_MS / 1000);
+          is_monitoring_idle = true;
+        }
+        s_led_state = LED_BLINK_SLOW;
+      } else if (is_monitoring_idle) {
+        // Masa tenang sudah terlewati
+        ESP_LOGW(IDLE_TAG,
+                 "Masa tenang %d detik tercapai. Eksekusi Auto-Upload!",
+                 IDLE_SAFEGUARD_MS / 1000);
+
+        is_monitoring_idle = false;
+        g_has_new_writes = false; // Reset flag write
+        g_last_sd_activity_ms = 0;
+
+        s_led_state = LED_BLINK_FAST;
+        uploader_trigger(NULL);
+
+        // Tunggu sampai storage dikembalikan ke USB Host setelah upload
+        for (int w = 0; w < 300; w++) {
+          vTaskDelay(pdMS_TO_TICKS(1000));
+          if (storage_manager_in_use_by_usb())
+            break;
+        }
+
+        s_led_state = LED_ON_SOLID;
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        s_led_state = LED_OFF;
+        ESP_LOGI(IDLE_TAG, "Kembali ke mode siaga.");
+      }
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(IDLE_POLL_MS));
+  }
+}
 
 static void ap_timeout_task(void *arg);
 
@@ -35,31 +191,33 @@ static void boot_btn_task(void *arg) {
     if (gpio_get_level(BOOT_BTN_PIN) == 0) { // Ditekan (active low)
       press_count++;
       if (press_count >= 30) { // Tahan 3 detik
-        ESP_LOGW("boot_btn", "Tombol BOOT ditekan 3 detik. Mengaktifkan mode APSTA...");
-        
+        ESP_LOGW("boot_btn",
+                 "Tombol BOOT ditekan 3 detik. Mengaktifkan mode APSTA...");
+
         extern int32_t g_ap_timeout_sec;
         if (g_ap_timeout_sec <= 0) {
-            // Aktifkan mode APSTA
-            esp_wifi_set_mode(WIFI_MODE_APSTA);
-            
-            // Siapkan dashboard portal
-            web_server_set_dashboard_mode(true);
-            dns_server_start();
-            
-            // Set durasi timeout (2 menit)
-            g_ap_timeout_sec = 120;
-            
-            // Create task timeout
-            xTaskCreate(ap_timeout_task, "ap_timeout", 2048, NULL, 5, NULL);
+          // Aktifkan mode APSTA
+          esp_wifi_set_mode(WIFI_MODE_APSTA);
+
+          // Siapkan dashboard portal
+          web_server_set_dashboard_mode(true);
+          dns_server_start();
+
+          // Set durasi timeout (2 menit)
+          g_ap_timeout_sec = 120;
+
+          // Create task timeout
+          xTaskCreate(ap_timeout_task, "ap_timeout", 2048, NULL, 5, NULL);
         } else {
-            // Jika APSTA sedang aktif, perpanjang waktu saja
-            g_ap_timeout_sec = 120;
-            ESP_LOGI("boot_btn", "APSTA sudah aktif. Memperpanjang waktu timeout.");
+          // Jika APSTA sedang aktif, perpanjang waktu saja
+          g_ap_timeout_sec = 120;
+          ESP_LOGI("boot_btn",
+                   "APSTA sudah aktif. Memperpanjang waktu timeout.");
         }
 
         // Tunggu sampai tombol dilepas untuk menghindari trigger berulang
         while (gpio_get_level(BOOT_BTN_PIN) == 0) {
-            vTaskDelay(pdMS_TO_TICKS(100));
+          vTaskDelay(pdMS_TO_TICKS(100));
         }
         press_count = 0;
       }
@@ -117,7 +275,6 @@ static void ap_timeout_task(void *arg) {
 
 static const char *TAG = "app_main";
 
-
 #define STORAGE_BASE_PATH "/data"
 
 /* ─── Variabel Global Konfigurasi ─── */
@@ -162,7 +319,7 @@ static bool load_config_from_nvs(void) {
     get_nvs_str(nvs_handle, "wifi_ssid", s_wifi_ssid, sizeof(s_wifi_ssid), "");
     get_nvs_str(nvs_handle, "wifi_pass", s_wifi_pass, sizeof(s_wifi_pass), "");
     get_nvs_str(nvs_handle, "ftp_host", s_ftp_host, sizeof(s_ftp_host), "");
-    s_ftp_port = get_nvs_i32(nvs_handle, "ftp_port", 21);
+    s_ftp_port = get_nvs_i32(nvs_handle, "ftp_port", 0);
     get_nvs_str(nvs_handle, "ftp_user", s_ftp_user, sizeof(s_ftp_user), "");
     get_nvs_str(nvs_handle, "ftp_pass", s_ftp_pass, sizeof(s_ftp_pass), "");
     nvs_close(nvs_handle);
@@ -171,7 +328,7 @@ static bool load_config_from_nvs(void) {
     s_wifi_ssid[0] = '\0';
     s_wifi_pass[0] = '\0';
     s_ftp_host[0] = '\0';
-    s_ftp_port = 21;
+    s_ftp_port = 0;
     s_ftp_user[0] = '\0';
     s_ftp_pass[0] = '\0';
   }
@@ -238,8 +395,6 @@ static void run_normal_operation(void) {
       .base_path = STORAGE_BASE_PATH,
   });
 
-
-
   /* 7. Jalankan Console REPL */
   ESP_ERROR_CHECK(console_cmd_init());
 
@@ -260,6 +415,12 @@ static void run_normal_operation(void) {
 
   /* 10. Mulai task countdown AP Timeout */
   xTaskCreate(ap_timeout_task, "ap_timeout", 2048, NULL, 5, NULL);
+
+  /* 11. Mulai LED Indicator task */
+  xTaskCreate(led_task, "led_task", 2048, NULL, 3, NULL);
+
+  /* 12. Mulai Idle Detector (auto-upload saat USB idle 30 detik) */
+  xTaskCreate(idle_detector_task, "idle_det", 4096, NULL, 4, NULL);
 
   ESP_LOGI(TAG, "=== ECG Dongle Siap ===");
 }

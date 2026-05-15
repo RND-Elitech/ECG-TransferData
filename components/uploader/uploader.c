@@ -1,6 +1,5 @@
 #include "uploader.h"
 #include "storage_manager.h"
-#include "mqtt_manager.h"
 
 #include <string.h>
 #include <dirent.h>
@@ -15,14 +14,7 @@ static const char *TAG = "uploader";
 /* State internal modul */
 static uploader_config_t s_cfg = {0};
 
-/* ─── Helper: tentukan MIME type berdasarkan ekstensi ─── */
-static const char *_get_mime_type(const char *filename)
-{
-    if (strstr(filename, ".xml") || strstr(filename, ".XML")) return "application/xml";
-    if (strstr(filename, ".jpg") || strstr(filename, ".JPG")) return "image/jpeg";
-    if (strstr(filename, ".bmp") || strstr(filename, ".BMP")) return "image/bmp";
-    return "application/octet-stream";
-}
+
 
 /* ─── Helper: cek apakah file adalah file ECG yang valid ─── */
 static bool _is_valid_ecg_file(const char *name)
@@ -97,9 +89,19 @@ esp_err_t uploader_run(void)
     FtpClient* ftp = getFtpClient();
     NetBuf_t* ftp_ctrl = NULL;
 
+    int success = 0, fail = 0;
+    bool found  = false;
+
+    ESP_LOGI(TAG, "--- Debug FTP Configuration ---");
+    ESP_LOGI(TAG, "Host     : [%s]", s_cfg.ftp_host);
+    ESP_LOGI(TAG, "Port     : %d", s_cfg.ftp_port);
+    ESP_LOGI(TAG, "Username : [%s]", s_cfg.ftp_user);
+    ESP_LOGI(TAG, "Password : [%s]", s_cfg.ftp_pass);
+    ESP_LOGI(TAG, "-------------------------------");
+
     ESP_LOGI(TAG, "Menghubungkan ke FTP %s:%d", s_cfg.ftp_host, s_cfg.ftp_port);
     if (ftp->ftpClientConnect(s_cfg.ftp_host, s_cfg.ftp_port, &ftp_ctrl) != 1) {
-        ESP_LOGE(TAG, "Koneksi FTP gagal");
+        ESP_LOGE(TAG, "Koneksi FTP gagal (Mungkin Host kosong atau tidak terjangkau)");
         closedir(subdir);
         if (needs_remount) storage_manager_expose_to_usb();
         return ESP_FAIL;
@@ -107,15 +109,12 @@ esp_err_t uploader_run(void)
 
     ESP_LOGI(TAG, "Login FTP menggunakan %s...", s_cfg.ftp_user);
     if (ftp->ftpClientLogin(s_cfg.ftp_user, s_cfg.ftp_pass, ftp_ctrl) != 1) {
-        ESP_LOGE(TAG, "Login FTP gagal");
+        ESP_LOGE(TAG, "Login FTP gagal untuk user: %s", s_cfg.ftp_user);
         ftp->ftpClientQuit(ftp_ctrl);
         closedir(subdir);
         if (needs_remount) storage_manager_expose_to_usb();
         return ESP_FAIL;
     }
-
-    int success = 0, fail = 0;
-    bool found  = false;
 
     while ((entry = readdir(subdir)) != NULL) {
         if (entry->d_type != DT_REG || !_is_valid_ecg_file(entry->d_name)) continue;
@@ -163,7 +162,11 @@ esp_err_t uploader_run(void)
 static void _upload_task(void *pvParameters)
 {
     esp_err_t ret = uploader_run();
-    mqtt_manager_publish_upload_status(ret == ESP_OK);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Upload selesai: semua file berhasil dikirim.");
+    } else {
+        ESP_LOGW(TAG, "Upload selesai: ada file yang gagal dikirim.");
+    }
     vTaskDelete(NULL);
 }
 
