@@ -12,7 +12,6 @@
 #include "console_cmd.h"
 #include "dns_server.h"
 #include "mdns.h"
-#include "mqtt_manager.h"
 #include "storage_manager.h"
 #include "uploader.h"
 #include "web_server.h"
@@ -118,22 +117,12 @@ static void ap_timeout_task(void *arg) {
 
 static const char *TAG = "app_main";
 
-/* ─── Konfigurasi Default (hanya untuk MQTT & SN) ─── */
-#define GATEWAY_SN "GWTEST"
-#define MQTT_BROKER_URI "mqtts://dev.samelement.com"
-#define MQTT_BROKER_PORT 8888
-#define MQTT_USERNAME "iotgateway"
-#define MQTT_PASSWORD "iotgateway10nice"
+
 #define STORAGE_BASE_PATH "/data"
 
 /* ─── Variabel Global Konfigurasi ─── */
 static char s_wifi_ssid[64];
 static char s_wifi_pass[64];
-static char s_mqtt_uri[128];
-static int32_t s_mqtt_port;
-static char s_mqtt_user[64];
-static char s_mqtt_pass[64];
-static char s_gateway_sn[32];
 static char s_ftp_host[64];
 static int32_t s_ftp_port;
 static char s_ftp_user[64];
@@ -172,15 +161,6 @@ static bool load_config_from_nvs(void) {
 
     get_nvs_str(nvs_handle, "wifi_ssid", s_wifi_ssid, sizeof(s_wifi_ssid), "");
     get_nvs_str(nvs_handle, "wifi_pass", s_wifi_pass, sizeof(s_wifi_pass), "");
-    get_nvs_str(nvs_handle, "mqtt_uri", s_mqtt_uri, sizeof(s_mqtt_uri),
-                MQTT_BROKER_URI);
-    s_mqtt_port = get_nvs_i32(nvs_handle, "mqtt_port", MQTT_BROKER_PORT);
-    get_nvs_str(nvs_handle, "mqtt_user", s_mqtt_user, sizeof(s_mqtt_user),
-                MQTT_USERNAME);
-    get_nvs_str(nvs_handle, "mqtt_pass", s_mqtt_pass, sizeof(s_mqtt_pass),
-                MQTT_PASSWORD);
-    get_nvs_str(nvs_handle, "gateway_sn", s_gateway_sn, sizeof(s_gateway_sn),
-                GATEWAY_SN);
     get_nvs_str(nvs_handle, "ftp_host", s_ftp_host, sizeof(s_ftp_host), "");
     s_ftp_port = get_nvs_i32(nvs_handle, "ftp_port", 21);
     get_nvs_str(nvs_handle, "ftp_user", s_ftp_user, sizeof(s_ftp_user), "");
@@ -190,11 +170,6 @@ static bool load_config_from_nvs(void) {
     ESP_LOGW(TAG, "NVS 'config' tidak ditemukan — menggunakan nilai default.");
     s_wifi_ssid[0] = '\0';
     s_wifi_pass[0] = '\0';
-    strncpy(s_mqtt_uri, MQTT_BROKER_URI, sizeof(s_mqtt_uri) - 1);
-    s_mqtt_port = MQTT_BROKER_PORT;
-    strncpy(s_mqtt_user, MQTT_USERNAME, sizeof(s_mqtt_user) - 1);
-    strncpy(s_mqtt_pass, MQTT_PASSWORD, sizeof(s_mqtt_pass) - 1);
-    strncpy(s_gateway_sn, GATEWAY_SN, sizeof(s_gateway_sn) - 1);
     s_ftp_host[0] = '\0';
     s_ftp_port = 21;
     s_ftp_user[0] = '\0';
@@ -263,17 +238,7 @@ static void run_normal_operation(void) {
       .base_path = STORAGE_BASE_PATH,
   });
 
-  /* 6. Mulai MQTT */
-  ESP_LOGI(TAG, "Memulai MQTT client...");
-  ESP_ERROR_CHECK(mqtt_manager_init(&(mqtt_manager_config_t){
-      .broker_uri = s_mqtt_uri,
-      .broker_port = s_mqtt_port,
-      .username = s_mqtt_user,
-      .password = s_mqtt_pass,
-      .gateway_sn = s_gateway_sn,
-      .on_upload_cmd = uploader_trigger,
-      .cb_ctx = NULL,
-  }));
+
 
   /* 7. Jalankan Console REPL */
   ESP_ERROR_CHECK(console_cmd_init());

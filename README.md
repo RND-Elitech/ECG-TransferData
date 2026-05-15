@@ -4,34 +4,64 @@ Proyek ini mengimplementasikan perangkat **USB Mass Storage Class (MSC)** menggu
 
 ---
 
-## Analisis `main/tusb_msc_main.c`
+## Analisis `main/app_main.c`
 
-File `main/tusb_msc_main.c` adalah inti dari aplikasi ini.
+File `main/app_main.c` adalah inti dari aplikasi ini.
 
 ### 1. Fungsi Utama (Core Purpose)
 Program ini memungkinkan ESP32 untuk:
 - Berperan sebagai Flash Drive USB (MSC) yang dapat dibaca/tulis oleh PC atau perangkat medis (EKG).
 - Mengelola penyimpanan data pada **SD Card** atau **Internal SPI Flash**.
-- Mengunggah file data EKG (format `.XML`, `.JPG`, `.BMP`) ke server melalui HTTP secara otomatis.
-- Berkomunikasi secara dua arah dengan backend melalui protokol **MQTT over TLS (MQTTS)**.
+- Mengunggah file data EKG (format `.XML`, `.JPG`, `.BMP`) ke server melalui FTP secara otomatis.
 
 ### 2. Komponen Kunci
 - **TinyUSB (MSC Storage)**: Mengelola deskriptor USB dan protokol Mass Storage.
 - **Wi-Fi & Networking**: Menghubungkan ESP32 ke jaringan Wi-Fi.
-- **MQTT Client**: Jalur kontrol jarak jauh untuk menerima perintah dan mempublikasikan status.
 - **HTTP Client**: Mengirim file ke API server dengan metode `POST` multipart/form-data.
 - **Console REPL**: Antarmuka CLI melalui UART untuk debugging dan kontrol manual.
 
 ### 3. Alur Kerja Perangkat (Workflow)
-1. **Inisialisasi**: Menyiapkan NVS, Wi-Fi, dan MQTT.
+1. **Inisialisasi**: Menyiapkan NVS dan Wi-Fi.
 2. **USB Setup**: Storage di-expose ke USB Host (mode Expose) secara default.
-3. **MQTT Connect**: Begitu terhubung, ESP32 langsung mempublikasikan beberapa pesan (lihat bagian MQTT).
-5. **Proses Upload via MQTT**:
-   - Menerima perintah JSON dari topik `iotgateway/{gateway_sn}/upload`.
+3. **Proses Upload**:
+   - Menerima perintah/trigger untuk mengunggah file.
    - Mengambil alih storage dari USB Host (otomatis).
    - Mencari folder `ecg_archive` terbaru, lalu mengunggah **semua** file valid (`.xml`, `.jpg`, `.bmp`) di dalamnya secara berurutan.
    - Setelah berhasil, menghapus file yang telah terunggah. Folder dihapus jika sudah kosong.
    - Mengembalikan storage ke USB Host.
+6. **Web Portal Management**: Menyediakan antarmuka konfigurasi dan pemantauan status via browser.
+
+---
+
+## Kontrol Fisik (Tombol)
+
+Perangkat dilengkapi dengan dua fungsi kontrol melalui tombol fisik pada ESP32:
+
+| Tombol | Pin (GPIO) | Durasi | Aksi |
+| :--- | :--- | :--- | :--- |
+| **BOOT** | GPIO 0 | 3 Detik | **Aktifkan Dashboard (APSTA)**: Menyalakan WiFi AP sementara (2 menit) untuk akses dashboard tanpa reboot. |
+| **RESET**| GPIO 1 | 3 Detik | **Factory Reset**: Menghapus seluruh konfigurasi WiFi & FTP dari NVS dan merestart perangkat. |
+
+---
+
+## Antarmuka Web (Web Portal)
+
+Sistem menggunakan **Captive Portal** yang secara otomatis muncul saat pengguna terhubung ke WiFi perangkat. Terdapat dua jenis tampilan portal:
+
+### 1. Setup Portal (`root.html`)
+Muncul otomatis jika perangkat belum dikonfigurasi atau gagal terhubung ke WiFi.
+*   **Fungsi**: Konfigurasi SSID WiFi, Password WiFi, dan detail akun FTP Server.
+*   **Akses**: Otomatis atau via `http://192.168.4.1`.
+
+### 2. Dashboard Portal (`dashboard.html`)
+Muncul saat perangkat beroperasi normal (Mode AP+STA).
+*   **Trigger**: Otomatis selama 2 menit setelah boot, atau dipicu via tombol BOOT (3 detik).
+*   **Fitur**:
+    *   **AP Timer**: Menampilkan sisa waktu WiFi AP akan aktif.
+    *   **Extend Time**: Menambah durasi aktif WiFi AP (+1 menit).
+    *   **Device Info**: Menampilkan IP Address dan SSID yang sedang terhubung.
+    *   **Danger Zone**: Tombol Factory Reset cepat (memerlukan password admin).
+*   **mDNS**: Dapat diakses via `http://medlink-dongle.local`.
 
 ---
 
@@ -41,117 +71,10 @@ Semua konfigurasi utama terpusat dalam variabel global di bagian atas file `tusb
 
 | Variabel | Nilai Default | Keterangan |
 | :--- | :--- | :--- |
-| `GATEWAY_SN` | `"B0001"` | Serial Number / ID unik perangkat |
-| `MQTT_BROKER_URI` | `"mqtts://dev.samelement.com"` | URI broker MQTT |
-| `MQTT_BROKER_PORT` | `8888` | Port broker MQTT |
-| `MQTT_USERNAME` | `"iotgateway"` | Username autentikasi MQTT |
-| `MQTT_PASSWORD` | `"iotgateway10nice"` | Password autentikasi MQTT |
+| `g_ap_timeout_sec` | `120` | Durasi default WiFi AP aktif (detik) |
 
 ---
 
-## Topik MQTT
-
-Semua topik menggunakan `gateway_sn` secara dinamis sehingga mendukung banyak perangkat sekaligus.
-
-### A. Publish (ESP32 → Broker)
-
-| Topik | Trigger | Retain | Keterangan |
-| :--- | :--- | :--- | :--- |
-| `iotgateway/{gateway_sn}/dongle/status/online` | Saat konek & saat putus (LWT) | Ya | Mengirim status online/offline |
-| `iotgateway/{gateway_sn}/dongle/info` | Saat konek | Ya | Mengirim info firmware & hardware |
-| `iotgateway/{gateway_sn}/dongle/function` | Saat konek | Ya | Mengirim IP dan fungsi perangkat |
-| `iotgateway/{gateway_sn}/dongle/ip` | Saat menerima perintah `get` | Tidak | Membalas permintaan IP address |
-| `iotgateway/{gateway_sn}/dongle/upload/status` | Saat selesai upload | Tidak | Mengirim hasil sukses/gagal upload |
-
-#### Payload: `dongle/status/online` (Online)
-```json
-{
-  "gateway_sn": "B0001",
-  "data": {
-    "online": true
-  }
-}
-```
-
-#### Payload: `dongle/status/online` (Offline — LWT otomatis dari broker jika perangkat mati mendadak)
-```json
-{
-  "gateway_sn": "B0001",
-  "data": {
-    "online": false
-  }
-}
-```
-
-#### Payload: `dongle/info`
-```json
-{
-  "gateway_sn": "B0001",
-  "data": {
-    "model": "EcgDongle-01",
-    "firmware_version": "1.1.1",
-    "hardware_revision": "R1.1",
-    "build_date": "2026-05-08"
-  }
-}
-```
-
-#### Payload: `dongle/function`
-```json
-{
-  "gateway_sn": "B0001",
-  "data": {
-    "ip": "192.168.x.x",
-    "device_function": "ecg1200g"
-  }
-}
-```
-
-#### Payload: `dongle/ip` (Respons cek IP)
-```json
-{
-  "gateway_sn": "B0001",
-  "data": {
-    "ip": "192.168.x.x"
-  }
-}
-```
-
-#### Payload: `dongle/upload/status` (Selesai Upload)
-```json
-{
-  "gateway_sn": "B0001",
-  "data": {
-    "status": "completed"
-  }
-}
-```
-> **Catatan**: Jika gagal, status bernilai `"failed"`. Informasi jumlah file yang sukses/gagal dapat dilihat melalui log terminal.
-
----
-
-### B. Subscribe (Broker → ESP32)
-
-| Topik | Payload | Aksi |
-| :--- | :--- | :--- |
-| `iotgateway/{gateway_sn}/dongle/upload` | JSON dengan `command: "upload"` | Memicu proses upload file ke server |
-| `iotgateway/{gateway_sn}/dongle/ip/get` | `get` | Memicu ESP32 membalas dengan IP address-nya |
-
-#### Payload: Perintah Upload
-```json
-{
-  "gateway_sn": "B0001",
-  "data": {
-    "command": "upload"
-  }
-}
-```
-
-> **Catatan**: ESP32 memvalidasi bahwa `gateway_sn` di dalam JSON cocok dengan miliknya dan nilai `command` adalah `"upload"` sebelum menjalankan proses.
-
-
-
----
 
 ## Format File yang Didukung untuk Upload
 
@@ -181,8 +104,7 @@ Semua topik menggunakan `gateway_sn` secara dinamis sehingga mendukung banyak pe
 | Parameter | Nilai |
 | :--- | :--- |
 | **Base Path** | `/data` |
-| **Server Upload** | `http://192.168.13.156:3000/api/ecg-1200g/upload` |
-| **MQTT Broker** | `mqtts://dev.samelement.com:8888` |
+| **Server Upload** | (Berdasarkan konfigurasi FTP) |
 | **Vendor ID USB** | `0x303A` (Espressif) |
 | **Product ID USB** | `0x4002` |
 
