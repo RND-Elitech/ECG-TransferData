@@ -4,6 +4,8 @@
 #include <sys/types.h>
 #include <string.h>
 #include "storage_manager.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 
 #include <stdio.h>
 #include "esp_log.h"
@@ -102,6 +104,43 @@ static int _cmd_status(int argc, char **argv)
     return 0;
 }
 
+static int _cmd_set_sn(int argc, char **argv)
+{
+    if (argc < 2) {
+        printf("Gunakan: set_sn <SERIAL_NUMBER>\n");
+        printf("Contoh: set_sn DONGLE-001\n");
+        return -1;
+    }
+    
+    const char *sn = argv[1];
+    if (strlen(sn) >= 32) {
+        printf("Error: Serial Number terlalu panjang (maksimal 31 karakter)\n");
+        return -1;
+    }
+
+    nvs_handle_t nvs_handle;
+    /* Buka namespace "factory" di NVS default */
+    esp_err_t err = nvs_open("factory", NVS_READWRITE, &nvs_handle);
+    if (err != ESP_OK) {
+        printf("Error membuka NVS (0x%x). Pastikan nvs_flash_init() sudah dipanggil.\n", err);
+        return -1;
+    }
+
+    err = nvs_set_str(nvs_handle, "dongle_sn", sn);
+    if (err == ESP_OK) {
+        err = nvs_commit(nvs_handle);
+    }
+    nvs_close(nvs_handle);
+
+    if (err == ESP_OK) {
+        printf("SUKSES! Serial Number disetel ke: '%s'\n", sn);
+        printf("Silakan cabut pasang USB Dongle (Restart) agar perubahan nama WiFi dan Flashdisk diterapkan.\n");
+    } else {
+        printf("Gagal menyimpan ke NVS (0x%x)\n", err);
+    }
+    return 0;
+}
+
 /* ─── Daftar command ─── */
 static const esp_console_cmd_t s_cmds[] = {
     {
@@ -139,6 +178,12 @@ static const esp_console_cmd_t s_cmds[] = {
         .help    = "Status kepemilikan storage",
         .hint    = NULL,
         .func    = &_cmd_status,
+    },
+    {
+        .command = "set_sn",
+        .help    = "Suntikkan Serial Number Dongle ke memori permanen (NVS)",
+        .hint    = "<SERIAL_NUMBER>",
+        .func    = &_cmd_set_sn,
     },
 };
 

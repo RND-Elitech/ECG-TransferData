@@ -7,5 +7,5 @@ endif()
 idf_component_register(
     SRCS "storage_manager.c"
     INCLUDE_DIRS "."
-    PRIV_REQUIRES "${priv_requires}" freertos
+    PRIV_REQUIRES "${priv_requires}" freertos device_info
 )

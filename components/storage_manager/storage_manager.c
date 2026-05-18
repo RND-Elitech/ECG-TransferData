@@ -15,7 +15,8 @@
 #include "diskio_impl.h"
 #include "diskio_sdmmc.h"
 #include "driver/sdmmc_host.h"
-#include "sdmmc_cmd.h"
+#include "vfs_fat_internal.h"
+#include "device_info.h"
 
 
 static const char *TAG = "storage_manager";
@@ -76,11 +77,13 @@ static uint8_t const s_hs_desc[] = {
 };
 #endif
 
+static char s_serial_number[32] = "ECG-B0001"; // Fallback awal
+
 static char const *s_string_desc[] = {
     (const char[]){0x09, 0x04}, // 0: English
     "Espressif",                // 1: Manufacturer
     "ECG Dongle",               // 2: Product
-    "ECG-B0001",                // 3: Serial
+    s_serial_number,            // 3: Serial (Dinamis dari NVS/MAC)
     "ECG MSC",                  // 4: MSC Interface
 };
 
@@ -139,6 +142,9 @@ static esp_err_t _init_sdmmc(void) {
 /* ─── Public API ─── */
 
 esp_err_t storage_manager_init(void) {
+  /* Dapatkan SN perangkat secara dinamis */
+  device_info_get_sn(s_serial_number, sizeof(s_serial_number));
+
   ESP_RETURN_ON_ERROR(_init_sdmmc(), TAG, "Inisialisasi SDMMC gagal");
   ESP_ERROR_CHECK(tinyusb_msc_register_callback(TINYUSB_MSC_EVENT_MOUNT_CHANGED,
                                                 _on_mount_changed));

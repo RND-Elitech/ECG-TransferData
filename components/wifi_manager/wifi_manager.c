@@ -1,4 +1,5 @@
 #include "wifi_manager.h"
+#include "device_info.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -81,10 +82,8 @@ esp_err_t wifi_manager_start(const char *ssid, const char *password,
     strncpy((char *)wifi_config.sta.password, password, sizeof(wifi_config.sta.password) - 1);
     wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
 
-    uint8_t mac[6];
-    esp_wifi_get_mac(WIFI_IF_STA, mac);
     char ap_ssid[32];
-    snprintf(ap_ssid, sizeof(ap_ssid), "MedLink-Dongle-%02X%02X", mac[4], mac[5]);
+    device_info_get_sn(ap_ssid, sizeof(ap_ssid));
     
     wifi_config_t ap_config = {
         .ap = {
@@ -134,11 +133,9 @@ esp_err_t wifi_manager_start(const char *ssid, const char *password,
  * ───────────────────────────────────────────────────────────── */
 esp_err_t wifi_manager_start_ap(void) {
     /* Dapatkan 2 byte terakhir MAC untuk SSID unik */
-    uint8_t mac[6];
-    esp_wifi_get_mac(WIFI_IF_STA, mac);
+    /* Dapatkan SN perangkat untuk nama AP */
     char ap_ssid[32];
-    snprintf(ap_ssid, sizeof(ap_ssid), "MedLink-Dongle-%02X%02X",
-             mac[4], mac[5]);
+    device_info_get_sn(ap_ssid, sizeof(ap_ssid));
 
     _init_wifi_if_needed();
 
