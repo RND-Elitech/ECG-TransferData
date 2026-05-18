@@ -28,6 +28,7 @@
 #include "nvs.h"
 #include "esp_system.h"
 #include "cJSON.h"
+#include "ota_manager.h"
 
 static const char *TAG = "web_server";
 static httpd_handle_t s_server = NULL;
@@ -358,6 +359,107 @@ static esp_err_t handler_ap_extend(httpd_req_t *req) {
 }
 
 /* ────────────────────────────────────────────────
+ * Handler: GET /ota/check
+ * Fetch version.json dari server dan kembalikan hasil perbandingan versi.
+ * ──────────────────────────────────────────────── */
+static esp_err_t handler_ota_check(httpd_req_t *req) {
+    ota_check_result_t result;
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+    esp_err_t err = ota_manager_check(&result);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "current_version", result.current_version);
+    cJSON_AddStringToObject(root, "latest_version",  result.latest_version);
+    cJSON_AddBoolToObject  (root, "update_available", result.update_available);
+    cJSON_AddStringToObject(root, "firmware_url",    result.firmware_url);
+    cJSON_AddStringToObject(root, "release_notes",   result.release_notes);
+
+    if (err != ESP_OK) {
+        cJSON_AddStringToObject(root, "error", "Gagal menghubungi server pembaruan.");
+    }
+
+    char *json_str = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    httpd_resp_sendstr(req, json_str ? json_str : "{}");
+    if (json_str) free(json_str);
+    return ESP_OK;
+}
+
+/* ────────────────────────────────────────────────
+ * Handler: POST /ota/start
+ * Body JSON: { "firmware_url": "https://..." }
+ * ──────────────────────────────────────────────── */
+static esp_err_t handler_ota_start(httpd_req_t *req) {
+    int total = req->content_len;
+    if (total <= 0 || total > 1024) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad body");
+        return ESP_FAIL;
+    }
+
+    char *body = malloc(total + 1);
+    if (!body) { httpd_resp_send_500(req); return ESP_ERR_NO_MEM; }
+
+    int received = 0;
+    while (received < total) {
+        int ret = httpd_req_recv(req, body + received, total - received);
+        if (ret <= 0) { free(body); return ESP_FAIL; }
+        received += ret;
+    }
+    body[total] = '\0';
+
+    cJSON *root  = cJSON_Parse(body);
+    free(body);
+
+    cJSON *j_url = root ? cJSON_GetObjectItem(root, "firmware_url") : NULL;
+    if (!cJSON_IsString(j_url)) {
+        if (root) cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing firmware_url");
+        return ESP_FAIL;
+    }
+
+    esp_err_t err = ota_manager_start_update(j_url->valuestring);
+    cJSON_Delete(root);
+
+    httpd_resp_set_type(req, "application/json");
+    if (err == ESP_OK) {
+        httpd_resp_sendstr(req, "{\"status\":\"started\"}");
+    } else if (err == ESP_ERR_INVALID_STATE) {
+        httpd_resp_sendstr(req, "{\"status\":\"already_running\"}");
+    } else {
+        httpd_resp_sendstr(req, "{\"status\":\"error\"}");
+    }
+    return ESP_OK;
+}
+
+/* ────────────────────────────────────────────────
+ * Handler: GET /ota/progress
+ * ──────────────────────────────────────────────── */
+static esp_err_t handler_ota_progress(httpd_req_t *req) {
+    const char *state_str;
+    switch (ota_manager_get_state()) {
+        case OTA_STATE_CHECKING:     state_str = "checking";     break;
+        case OTA_STATE_DOWNLOADING:  state_str = "downloading";  break;
+        case OTA_STATE_SUCCESS:      state_str = "success";      break;
+        case OTA_STATE_FAILED:       state_str = "failed";       break;
+        default:                     state_str = "idle";         break;
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "state",   state_str);
+    cJSON_AddNumberToObject(root, "progress", ota_manager_get_progress());
+    cJSON_AddStringToObject(root, "error",   ota_manager_get_error_message());
+
+    char *json_str = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json_str ? json_str : "{}");
+    if (json_str) free(json_str);
+    return ESP_OK;
+}
+
+/* ────────────────────────────────────────────────
  * Handler: Android captive portal probe  GET /generate_204
  * ──────────────────────────────────────────────── */
 static esp_err_t handler_generate_204(httpd_req_t *req) {
@@ -397,7 +499,8 @@ esp_err_t web_server_start(void) {
     }
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 10;
+    config.max_uri_handlers = 15;
+    config.stack_size = 10240; /* Tambah stack size untuk mencegah overflow saat OTA check (TLS/HTTPS) */
     config.uri_match_fn = httpd_uri_match_wildcard;
 
     ESP_LOGI(TAG, "Memulai HTTP server...");
@@ -415,6 +518,9 @@ esp_err_t web_server_start(void) {
         { .uri = "/reset",             .method = HTTP_POST, .handler = handler_reset        },
         { .uri = "/ap_status",         .method = HTTP_GET,  .handler = handler_ap_status    },
         { .uri = "/ap_extend",         .method = HTTP_POST, .handler = handler_ap_extend    },
+        { .uri = "/ota/check",         .method = HTTP_GET,  .handler = handler_ota_check    },
+        { .uri = "/ota/start",         .method = HTTP_POST, .handler = handler_ota_start    },
+        { .uri = "/ota/progress",      .method = HTTP_GET,  .handler = handler_ota_progress },
         { .uri = "/generate_204",      .method = HTTP_GET,  .handler = handler_generate_204 },
         { .uri = "/connecttest.txt",   .method = HTTP_GET,  .handler = handler_ncsi         },
         { .uri = "/hotspot-detect.html",.method = HTTP_GET, .handler = handler_catchall     },

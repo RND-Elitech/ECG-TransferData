@@ -407,6 +407,99 @@
         grid-template-columns: 1fr;
       }
     }
+
+    /* ─── OTA Update Card ─── */
+    .ota-card {
+      margin-top: 20px;
+      border-radius: 14px;
+      padding: 18px 20px;
+      border: 1.5px solid #e5e7eb;
+      background: #f9fafb;
+      transition: all 0.3s ease;
+    }
+    .ota-card.has-update {
+      background: linear-gradient(135deg, #eff6ff, #dbeafe);
+      border-color: #3b82f6;
+    }
+    .ota-card.downloading {
+      background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+      border-color: #22c55e;
+    }
+    .ota-card.error {
+      background: #fef2f2;
+      border-color: #ef4444;
+    }
+    .ota-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 14px;
+      color: #111827;
+      margin-bottom: 8px;
+    }
+    .ota-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #e0e7ff;
+      color: #3730a3;
+    }
+    .ota-badge.new { background: #dcfce7; color: #166534; }
+    .ota-badge.downloading { background: #fef9c3; color: #854d0e; }
+    .ota-desc {
+      font-size: 12.5px;
+      color: #6b7280;
+      line-height: 1.5;
+      margin-bottom: 12px;
+    }
+    .ota-notes {
+      font-size: 12px;
+      color: #374151;
+      background: rgba(255,255,255,0.7);
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      border-left: 3px solid #3b82f6;
+    }
+    .ota-progress-wrap {
+      background: #e5e7eb;
+      border-radius: 99px;
+      height: 8px;
+      overflow: hidden;
+      margin-bottom: 10px;
+      display: none;
+    }
+    .ota-progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #22c55e, #16a34a);
+      border-radius: 99px;
+      transition: width 0.5s ease;
+      width: 0%;
+    }
+    .ota-progress-label {
+      font-size: 11px;
+      color: #6b7280;
+      text-align: center;
+      margin-bottom: 8px;
+      display: none;
+    }
+    .btn-ota {
+      width: 100%;
+      padding: 10px;
+      border-radius: 10px;
+      border: none;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: white;
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-ota:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+    .btn-ota:disabled { background: #9ca3af; cursor: not-allowed; }
   </style>
 </head>
 
@@ -445,6 +538,22 @@
       </div>
     </div>
 
+    <!-- OTA Update Section -->
+    <div class="ota-card" id="ota-card">
+      <div class="ota-header">
+        <span id="ota-icon">🔄</span>
+        <span id="ota-title">Memeriksa Pembaruan...</span>
+        <span class="ota-badge" id="ota-badge">Checking</span>
+      </div>
+      <div class="ota-desc" id="ota-desc">Menghubungi server untuk memeriksa versi terbaru.</div>
+      <div class="ota-notes" id="ota-notes" style="display:none"></div>
+      <div class="ota-progress-wrap" id="ota-progress-wrap">
+        <div class="ota-progress-bar" id="ota-progress-bar"></div>
+      </div>
+      <div class="ota-progress-label" id="ota-progress-label">0%</div>
+      <button class="btn-ota" id="btn-ota" style="display:none" onclick="startOtaUpdate()">⬇ Install Update</button>
+    </div>
+
     <div class="divider"><span>Danger Zone</span></div>
 
     <!-- Danger Zone -->
@@ -470,6 +579,8 @@
     const TOTAL_SECONDS = 120; // 2 minutes default
     let remainingSeconds = TOTAL_SECONDS;
     let countdownInterval = null;
+    let otaFirmwareUrl = '';
+    let otaPollInterval = null;
 
     function formatTime(sec) {
       if (sec <= 0) return 'Offline';
@@ -506,7 +617,6 @@
         .then(data => {
           remainingSeconds = data.remaining_seconds || 0;
           updateDisplay();
-          // Show device info if available
           if (data.ssid) {
             document.getElementById('info-ssid').textContent = data.ssid;
             document.getElementById('info-grid').style.display = 'grid';
@@ -515,9 +625,7 @@
             document.getElementById('info-ip').textContent = data.ip;
           }
         })
-        .catch(() => {
-          // If endpoint not available, just tick down from current
-        });
+        .catch(() => {});
     }
 
     function extendApTime() {
@@ -530,14 +638,143 @@
           }
         })
         .catch(() => {
-          // Optimistically add 60 seconds
           remainingSeconds += 60;
           updateDisplay();
         });
     }
 
-    // Initial fetch
-    fetchApStatus();
+    /* ─── OTA Update Functions ─── */
+    function fetchOtaCheck() {
+      const card  = document.getElementById('ota-card');
+      const title = document.getElementById('ota-title');
+      const desc  = document.getElementById('ota-desc');
+      const badge = document.getElementById('ota-badge');
+      const icon  = document.getElementById('ota-icon');
+      const notes = document.getElementById('ota-notes');
+      const btn   = document.getElementById('btn-ota');
+
+      fetch('/ota/check')
+        .then(r => r.json())
+        .then(data => {
+          if (data.error) {
+            card.className  = 'ota-card error';
+            icon.textContent = '❌';
+            title.textContent = 'Gagal Cek Pembaruan';
+            badge.textContent = 'Error';
+            badge.className = 'ota-badge';
+            desc.textContent = data.error;
+            return;
+          }
+
+          if (data.update_available) {
+            otaFirmwareUrl = data.firmware_url;
+            card.className  = 'ota-card has-update';
+            icon.textContent = '🔔';
+            title.textContent = `Update Tersedia: v${data.latest_version}`;
+            badge.textContent = 'Baru!';
+            badge.className = 'ota-badge new';
+            desc.textContent = `Versi saat ini: v${data.current_version} → v${data.latest_version}`;
+            if (data.release_notes) {
+              notes.textContent = '📋 ' + data.release_notes;
+              notes.style.display = 'block';
+            }
+            btn.style.display = 'block';
+          } else {
+            card.className  = 'ota-card';
+            icon.textContent = '✅';
+            title.textContent = 'Firmware Sudah Terbaru';
+            badge.textContent = `v${data.current_version}`;
+            badge.className = 'ota-badge';
+            desc.textContent = 'Tidak ada pembaruan yang tersedia saat ini.';
+          }
+        })
+        .catch(() => {
+          const card = document.getElementById('ota-card');
+          card.className = 'ota-card error';
+          document.getElementById('ota-icon').textContent = '⚠️';
+          document.getElementById('ota-title').textContent = 'Server Tidak Terjangkau';
+          document.getElementById('ota-badge').textContent = 'Offline';
+          document.getElementById('ota-desc').textContent = 'Pastikan dongle terhubung ke internet untuk memeriksa pembaruan.';
+        });
+    }
+
+    function startOtaUpdate() {
+      if (!otaFirmwareUrl) return;
+      const card  = document.getElementById('ota-card');
+      const btn   = document.getElementById('btn-ota');
+      const wrap  = document.getElementById('ota-progress-wrap');
+      const label = document.getElementById('ota-progress-label');
+      const title = document.getElementById('ota-title');
+      const badge = document.getElementById('ota-badge');
+
+      btn.disabled = true;
+      btn.textContent = '⬇ Mengunduh...';
+      card.className = 'ota-card downloading';
+      wrap.style.display = 'block';
+      label.style.display = 'block';
+      title.textContent = 'Mengunduh Firmware...';
+      badge.textContent = 'Downloading';
+      badge.className = 'ota-badge downloading';
+
+      fetch('/ota/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firmware_url: otaFirmwareUrl })
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data.status === 'started' || data.status === 'already_running') {
+            // Mulai polling progress
+            otaPollInterval = setInterval(pollOtaProgress, 1500);
+          } else {
+            document.getElementById('ota-title').textContent = 'Gagal Memulai Update';
+            card.className = 'ota-card error';
+            btn.disabled = false;
+            btn.textContent = '⬇ Coba Lagi';
+          }
+        })
+        .catch(() => {
+          card.className = 'ota-card error';
+          btn.disabled = false;
+          btn.textContent = '⬇ Coba Lagi';
+        });
+    }
+
+    function pollOtaProgress() {
+      fetch('/ota/progress')
+        .then(r => r.json())
+        .then(data => {
+          const bar   = document.getElementById('ota-progress-bar');
+          const label = document.getElementById('ota-progress-label');
+          const title = document.getElementById('ota-title');
+          const card  = document.getElementById('ota-card');
+
+          bar.style.width   = data.progress + '%';
+          label.textContent = data.progress + '%';
+
+          if (data.state === 'success') {
+            clearInterval(otaPollInterval);
+            bar.style.width = '100%';
+            label.textContent = '100% — Reboot otomatis...';
+            title.textContent = '✅ Update Berhasil! Rebooting...';
+            document.getElementById('btn-ota').style.display = 'none';
+          } else if (data.state === 'failed') {
+            clearInterval(otaPollInterval);
+            card.className = 'ota-card error';
+            title.textContent = '❌ Update Gagal: ' + (data.error || 'Unknown error');
+            const btn = document.getElementById('btn-ota');
+            btn.disabled = false;
+            btn.textContent = '⬇ Coba Lagi';
+          }
+        })
+        .catch(() => {});
+    }
+
+    // ─── Inisialisasi saat halaman dimuat ───
+    Promise.all([
+      fetchApStatus(),
+      fetchOtaCheck()
+    ]);
 
     // Countdown tick
     countdownInterval = setInterval(() => {
@@ -549,7 +786,7 @@
       }
     }, 1000);
 
-    // Sync with server every 30s
+    // Sync dengan server setiap 30 detik
     setInterval(fetchApStatus, 30000);
 
     // Factory Reset

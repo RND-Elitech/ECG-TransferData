@@ -2,6 +2,7 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
+#include "esp_ota_ops.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
@@ -13,6 +14,7 @@
 #include "dns_server.h"
 #include "led_strip.h"
 #include "mdns.h"
+#include "ota_manager.h"
 #include "sdmmc_cmd.h"
 #include "storage_manager.h"
 #include "uploader.h"
@@ -367,9 +369,19 @@ static void ap_timeout_task(void *arg) {
     g_ap_timeout_sec--;
   }
   ESP_LOGI("ap_timeout", "Waktu 2 menit habis. Mematikan AP mode...");
+  
+  /* Hentikan web server dengan aman sebelum mematikan AP.
+     Ini mencegah lwIP tiba-tiba memutuskan socket yang sedang diproses httpd,
+     yang memicu bug double-free/heap corruption di ESP-IDF. */
+  web_server_stop();
+  
   web_server_set_dashboard_mode(false);
   dns_server_stop();
   esp_wifi_set_mode(WIFI_MODE_STA);
+  
+  /* Hidupkan kembali web server untuk bisa diakses via STA */
+  web_server_start();
+  
   vTaskDelete(NULL);
 }
 
@@ -528,7 +540,12 @@ static void run_normal_operation(void) {
  * app_main — Entry Point
  * ───────────────────────────────────────────────────────────── */
 void app_main(void) {
-  ESP_LOGI(TAG, "=== ECG Dongle Booting ===");
+  /* Tandai firmware ini sebagai valid — mencegah rollback otomatis oleh bootloader.
+   * PENTING: Harus dipanggil secepatnya setelah booting agar jika ada crash di
+   * titik ini, bootloader TIDAK rollback ke firmware lama (menjaga loop update aman). */
+  esp_ota_mark_app_valid_cancel_rollback();
+
+  ESP_LOGI(TAG, "=== ECG Dongle Booting — Firmware v%s ===", ota_manager_get_current_version());
 
   /* Mulai LED Indicator Task paling awal */
   xTaskCreate(led_task, "led_task", 2048, NULL, 3, NULL);

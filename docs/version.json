@@ -1,0 +1,5 @@
+{
+  "version": "1.0.0",
+  "firmware_url": "https://raw.githubusercontent.com/rivaldisinkoprima/ECG-TransferData/main/firmware.bin",
+  "release_notes": "Versi awal rilis publik. OTA update telah aktif."
+}
