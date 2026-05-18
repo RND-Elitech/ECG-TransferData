@@ -1,32 +1,35 @@
 #pragma once
 
-#include <stdbool.h>
 #include "esp_err.h"
+#include <stdbool.h>
+
 
 /* ─── Versi firmware saat ini ─── */
-#define APP_VERSION "1.0.0"
+#define APP_VERSION "1.1.2"
 
 /* ─── URL default untuk cek pembaruan ─── */
 /* Ganti dengan URL GitHub Releases atau server Anda */
-#define OTA_VERSION_URL "https://raw.githubusercontent.com/rivaldisinkoprima/ECG-TransferData/ota-update/releases/version.json"
-#define OTA_TIMEOUT_MS  15000  /* Timeout fetch version.json (15 detik) */
+#define OTA_VERSION_URL                                                        \
+  "https://raw.githubusercontent.com/rivaldisinkoprima/ECG-TransferData/"      \
+  "ota-update/releases/version.json"
+#define OTA_TIMEOUT_MS 15000 /* Timeout fetch version.json (15 detik) */
 
 /* ─── Struktur hasil pengecekan versi ─── */
 typedef struct {
-    char current_version[16];   /**< Versi firmware yang sedang berjalan */
-    char latest_version[16];    /**< Versi terbaru di server */
-    bool update_available;      /**< true jika latest > current */
-    char firmware_url[512];     /**< URL download firmware.bin */
-    char release_notes[256];    /**< Catatan rilis */
+  char current_version[16]; /**< Versi firmware yang sedang berjalan */
+  char latest_version[16];  /**< Versi terbaru di server */
+  bool update_available;    /**< true jika latest > current */
+  char firmware_url[512];   /**< URL download firmware.bin */
+  char release_notes[256];  /**< Catatan rilis */
 } ota_check_result_t;
 
 /* ─── Status proses OTA ─── */
 typedef enum {
-    OTA_STATE_IDLE,         /**< Tidak ada proses OTA */
-    OTA_STATE_CHECKING,     /**< Sedang fetch version.json */
-    OTA_STATE_DOWNLOADING,  /**< Sedang download & flash firmware */
-    OTA_STATE_SUCCESS,      /**< OTA berhasil, menunggu reboot */
-    OTA_STATE_FAILED,       /**< OTA gagal */
+  OTA_STATE_IDLE,        /**< Tidak ada proses OTA */
+  OTA_STATE_CHECKING,    /**< Sedang fetch version.json */
+  OTA_STATE_DOWNLOADING, /**< Sedang download & flash firmware */
+  OTA_STATE_SUCCESS,     /**< OTA berhasil, menunggu reboot */
+  OTA_STATE_FAILED,      /**< OTA gagal */
 } ota_state_t;
 
 /**

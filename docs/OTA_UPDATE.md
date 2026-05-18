@@ -206,31 +206,43 @@ File ini ditempatkan di server/GitHub dan menjadi sumber kebenaran versi:
 
 ## Panduan Rilis Update Baru (Langkah Developer)
 
-### 1. Build Firmware Baru
+### 1. Update Nomor Versi di Kode (Penting!)
+> **⚠️ PENGINGAT DEVELOPER:**
+> Proses OTA Update **TIDAK mengubah teks source code** di laptop Anda. File `ota_manager.h` adalah *Master Blueprint* lokal Anda. Anda **wajib mengubah angkanya secara manual** setiap kali mau membuat rilis versi baru.
+
+Edit file `components/ota_manager/ota_manager.h`:
+```c
+// Sebelum:
+#define APP_VERSION "1.0.0"
+
+// Sesudah (Naikkan versinya):
+#define APP_VERSION "1.1.2"
+```
+
+### 2. Build Firmware Baru
+Jalankan kompilasi untuk membungkus kode terbaru Anda menjadi sebuah *binary* kue matang:
 ```bash
 cd ECG-TransferData
 idf.py build
 ```
 File output: `build/FlashDriveTes.bin`
 
-### 2. Update Nomor Versi di Kode
-Edit file `components/ota_manager/ota_manager.h`:
-```c
-// Sebelum:
-#define APP_VERSION "1.0.0"
-
-// Sesudah:
-#define APP_VERSION "1.1.0"
-```
-Kemudian build ulang untuk mendapatkan binary dengan versi terbaru.
-
 ### 3. Upload ke GitHub (Cara Termudah)
 
 **Opsi A — GitHub Releases (Rekomendasi Produksi):**
-1. Buat tag baru di GitHub: `git tag v1.1.0 && git push --tags`
-2. Di halaman GitHub > Releases > Draft New Release
-3. Upload file `build/FlashDriveTes.bin`
-4. Salin URL download langsung dari GitHub (format `https://github.com/OWNER/REPO/releases/download/v1.1.0/FlashDriveTes.bin`)
+Terdapat dua cara untuk membuat rilis menggunakan tag:
+
+*Cara 1: Lewat GitHub Web (Otomatis)*
+1. Di halaman GitHub > Releases > Draft New Release.
+2. Ketikkan versi baru di kolom **Choose a tag** (misal: `v1.1.0`), GitHub akan otomatis membuatkan tag.
+
+*Cara 2: Lewat Terminal (Pilihan Klasik)*
+1. Buat dan push tag secara manual: `git tag v1.1.0 && git push origin v1.1.0`.
+2. Di halaman GitHub > Releases > Draft New Release > pilih tag `v1.1.0` yang sudah muncul.
+
+*Langkah Lanjutan (Untuk Cara 1 & 2):*
+3. Upload file `build/FlashDriveTes.bin` ke kotak aset.
+4. Publish rilis, lalu salin URL download langsungnya (format `https://github.com/OWNER/REPO/releases/download/v1.1.0/FlashDriveTes.bin`).
 
 **Opsi B — GitHub Raw File di folder releases/ (Untuk Testing Cepat):**
 1. Salin `build/FlashDriveTes.bin` ke folder lokal `releases/` dan ubah namanya menjadi `firmware.bin`.
