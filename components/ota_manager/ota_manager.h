@@ -8,7 +8,7 @@
 
 /* ─── URL default untuk cek pembaruan ─── */
 /* Ganti dengan URL GitHub Releases atau server Anda */
-#define OTA_VERSION_URL "https://raw.githubusercontent.com/rivaldisinkoprima/ECG-TransferData/main/version.json"
+#define OTA_VERSION_URL "https://raw.githubusercontent.com/rivaldisinkoprima/ECG-TransferData/main/docs/version.json"
 #define OTA_TIMEOUT_MS  15000  /* Timeout fetch version.json (15 detik) */
 
 /* ─── Struktur hasil pengecekan versi ─── */

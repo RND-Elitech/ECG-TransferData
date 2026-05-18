@@ -309,7 +309,7 @@ static void boot_btn_task(void *arg) {
           g_ap_timeout_sec = 120;
 
           // Create task timeout
-          xTaskCreate(ap_timeout_task, "ap_timeout", 2048, NULL, 5, NULL);
+          xTaskCreate(ap_timeout_task, "ap_timeout", 8192, NULL, 5, NULL);
         } else {
           // Jika APSTA sedang aktif, perpanjang waktu saja
           g_ap_timeout_sec = 120;
@@ -527,7 +527,7 @@ static void run_normal_operation(void) {
   ESP_ERROR_CHECK(dns_server_start());
 
   /* 10. Mulai task countdown AP Timeout */
-  xTaskCreate(ap_timeout_task, "ap_timeout", 2048, NULL, 5, NULL);
+  xTaskCreate(ap_timeout_task, "ap_timeout", 8192, NULL, 5, NULL);
 
   /* 12. Mulai Idle Detector (auto-upload saat USB idle 30 detik) */
   xTaskCreate(idle_detector_task, "idle_det", 4096, NULL, 4, NULL);
