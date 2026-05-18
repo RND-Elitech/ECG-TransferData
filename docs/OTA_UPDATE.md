@@ -226,23 +226,23 @@ Kemudian build ulang untuk mendapatkan binary dengan versi terbaru.
 
 ### 3. Upload ke GitHub (Cara Termudah)
 
-**Opsi A — GitHub Releases:**
+**Opsi A — GitHub Releases (Rekomendasi Produksi):**
 1. Buat tag baru di GitHub: `git tag v1.1.0 && git push --tags`
 2. Di halaman GitHub > Releases > Draft New Release
 3. Upload file `build/FlashDriveTes.bin`
-4. Salin URL download langsung dari GitHub (format `.../releases/download/v1.1.0/FlashDriveTes.bin`)
+4. Salin URL download langsung dari GitHub (format `https://github.com/OWNER/REPO/releases/download/v1.1.0/FlashDriveTes.bin`)
 
-**Opsi B — GitHub Raw File:**
-1. Letakkan `firmware.bin` di root atau folder `docs/` repositori
-2. Commit dan push: `git add firmware.bin && git commit -m "Update firmware v1.1.0" && git push`
-3. URL: `https://raw.githubusercontent.com/OWNER/REPO/main/firmware.bin`
+**Opsi B — GitHub Raw File di folder releases/ (Untuk Testing Cepat):**
+1. Salin `build/FlashDriveTes.bin` ke folder lokal `releases/` dan ubah namanya menjadi `firmware.bin`.
+2. Commit dan push: `git add releases/firmware.bin && git commit -m "Update firmware v1.1.0" && git push`
+3. URL: `https://raw.githubusercontent.com/OWNER/REPO/BRANCH/releases/firmware.bin`
 
 ### 4. Update `version.json` di Server
-Edit file `version.json` yang sudah diupload sebelumnya:
+Edit file `releases/version.json` yang sudah diupload sebelumnya:
 ```json
 {
   "version": "1.1.0",
-  "firmware_url": "https://raw.githubusercontent.com/.../firmware.bin",
+  "firmware_url": "https://github.com/rivaldisinkoprima/ECG-TransferData/releases/download/v1.1.0/FlashDriveTes.bin",
   "release_notes": "Deskripsi singkat perubahan versi ini."
 }
 ```
@@ -261,7 +261,7 @@ Edit file `components/ota_manager/ota_manager.h`:
 ```c
 // Ganti dengan URL repositori GitHub Anda:
 #define OTA_VERSION_URL \
-    "https://raw.githubusercontent.com/OWNER/REPO/main/version.json"
+    "https://raw.githubusercontent.com/OWNER/REPO/BRANCH/releases/version.json"
 ```
 
 ---
@@ -271,7 +271,7 @@ Edit file `components/ota_manager/ota_manager.h`:
 | Aspek | Status | Keterangan |
 | :--- | :--- | :--- |
 | **HTTPS Transport** | ✅ Aktif | Semua transfer menggunakan TLS |
-| **Cert Verification** | ⚠️ Dinonaktifkan | `skip_cert_common_name_check=true` — aman untuk GitHub, kurang ideal untuk produksi |
+| **Cert Verification** | ✅ Aktif | Menggunakan `esp_crt_bundle_attach` untuk memverifikasi sertifikat SSL GitHub melalui Root CA internal bawaan ESP-IDF |
 | **Rollback Protection** | ✅ Aktif | Firmware crash → rollback otomatis ke versi sebelumnya |
 | **Auth Token** | ❌ Belum ada | URL publik GitHub tidak memerlukan auth, private repo perlu header token |
 

@@ -1,5 +1,5 @@
 {
   "version": "1.1.1",
-  "firmware_url": "https://raw.githubusercontent.com/rivaldisinkoprima/ECG-TransferData/ota-update/releases/firmware.bin",
-  "release_notes": "Menguji unduhan dan flashing firmware otomatis!"
+  "firmware_url": "https://github.com/rivaldisinkoprima/ECG-TransferData/releases/download/v1.1.1/FlashDriveTes.bin",
+  "release_notes": "Menguji unduhan aman dari GitHub Releases menggunakan Git Tag!"
 }
