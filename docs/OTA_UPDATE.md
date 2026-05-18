@@ -200,7 +200,7 @@ File ini ditempatkan di server/GitHub dan menjadi sumber kebenaran versi:
 }
 ```
 
-> File template tersedia di: `docs/version.json`
+> File template tersedia di: `releases/version.json`
 
 ---
 

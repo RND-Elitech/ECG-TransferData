@@ -9,6 +9,7 @@
 #include "esp_https_ota.h"
 #include "esp_ota_ops.h"
 #include "cJSON.h"
+#include "esp_crt_bundle.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -35,7 +36,7 @@ static esp_err_t _http_event_handler(esp_http_client_event_t *evt)
         s_http_buf_len = 0;
         break;
     case HTTP_EVENT_ON_DATA:
-        if (!esp_http_client_is_chunked_response(evt->client)) {
+        {
             int copy_len = evt->data_len;
             if (s_http_buf_len + copy_len >= HTTP_BUF_SIZE) {
                 copy_len = HTTP_BUF_SIZE - s_http_buf_len - 1;
@@ -84,7 +85,7 @@ static void _ota_update_task(void *pvParameter)
         .url              = url,
         .timeout_ms       = 30000,
         .keep_alive_enable = true,
-        .skip_cert_common_name_check = true, /* Untuk GitHub: set true, produksi gunakan sertifikat */
+        .crt_bundle_attach = esp_crt_bundle_attach, /* Gunakan global certificate bundle untuk verifikasi aman */
     };
 
     esp_https_ota_config_t ota_cfg = {
@@ -169,7 +170,7 @@ esp_err_t ota_manager_check(ota_check_result_t *result)
         .url              = OTA_VERSION_URL,
         .timeout_ms       = OTA_TIMEOUT_MS,
         .event_handler    = _http_event_handler,
-        .skip_cert_common_name_check = true,
+        .crt_bundle_attach = esp_crt_bundle_attach, /* Gunakan global certificate bundle */
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&http_cfg);
