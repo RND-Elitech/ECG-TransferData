@@ -3,7 +3,6 @@
 #include "esp_err.h"
 #include <stdbool.h>
 
-
 /* ─── Versi firmware saat ini ─── */
 #define APP_VERSION "1.1.2"
 
@@ -11,7 +10,7 @@
 /* Ganti dengan URL GitHub Releases atau server Anda */
 #define OTA_VERSION_URL                                                        \
   "https://raw.githubusercontent.com/rivaldisinkoprima/ECG-TransferData/"      \
-  "ota-update/releases/version.json"
+  "inject-sn/releases/version.json"
 #define OTA_TIMEOUT_MS 15000 /* Timeout fetch version.json (15 detik) */
 
 /* ─── Struktur hasil pengecekan versi ─── */

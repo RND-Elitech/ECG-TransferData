@@ -85,6 +85,8 @@ static void _ota_update_task(void *pvParameter)
         .url              = url,
         .timeout_ms       = 30000,
         .keep_alive_enable = true,
+        .buffer_size      = 4096, /* WAJIB BESAR UNTUK GITHUB (Header Panjang) */
+        .buffer_size_tx   = 1024,
         .crt_bundle_attach = esp_crt_bundle_attach, /* Gunakan global certificate bundle untuk verifikasi aman */
     };
 
@@ -169,6 +171,8 @@ esp_err_t ota_manager_check(ota_check_result_t *result)
     esp_http_client_config_t http_cfg = {
         .url              = OTA_VERSION_URL,
         .timeout_ms       = OTA_TIMEOUT_MS,
+        .buffer_size      = 4096, /* WAJIB BESAR UNTUK GITHUB (Header Panjang) */
+        .buffer_size_tx   = 1024,
         .event_handler    = _http_event_handler,
         .crt_bundle_attach = esp_crt_bundle_attach, /* Gunakan global certificate bundle */
     };
