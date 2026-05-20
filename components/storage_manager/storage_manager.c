@@ -210,7 +210,14 @@ static esp_err_t _init_spiflash(void) {
 
 /* ─── Public API ─── */
 
+static bool s_storage_initialized = false;
+
 esp_err_t storage_manager_init(void) {
+  if (s_storage_initialized) {
+    ESP_LOGI(TAG, "Storage manager sudah terinisialisasi.");
+    return ESP_OK;
+  }
+
   /* Dapatkan SN perangkat secara dinamis */
   device_info_get_sn(s_serial_number, sizeof(s_serial_number));
 
@@ -255,6 +262,7 @@ esp_err_t storage_manager_init(void) {
 
   ESP_LOGI(TAG, "Storage manager siap (USB MSC aktif, media: %s)",
            s_using_sdcard ? "SD Card" : "SPI Flash");
+  s_storage_initialized = true;
   return ESP_OK;
 }
 

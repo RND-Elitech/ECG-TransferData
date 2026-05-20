@@ -10,6 +10,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include <dirent.h>
+#include <string.h>
+#include <unistd.h>
+
 #include "console_cmd.h"
 #include "dns_server.h"
 #include "led_strip.h"
@@ -567,6 +571,73 @@ static void run_normal_operation(void) {
   ESP_LOGI(TAG, "=== ECG Dongle Siap ===");
 }
 
+static void clean_storage_on_boot(void) {
+  ESP_LOGI("boot_clean", "Memeriksa sisa file lama di storage...");
+
+  // Inisialisasi dan mount storage agar bisa diakses aplikasi
+  if (storage_manager_init() != ESP_OK) {
+    ESP_LOGE("boot_clean", "Gagal inisialisasi storage untuk pembersihan.");
+    return;
+  }
+  if (storage_manager_mount() != ESP_OK) {
+    ESP_LOGE("boot_clean", "Gagal mount storage untuk pembersihan.");
+    return;
+  }
+
+  DIR *dir = opendir("/data");
+  if (!dir) {
+    ESP_LOGE("boot_clean", "Gagal membuka direktori /data");
+    return;
+  }
+
+  struct dirent *entry;
+  bool deleted_any = false;
+  while ((entry = readdir(dir)) != NULL) {
+    // Skip "." dan ".."
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+      continue;
+    }
+
+    char path[512];
+    snprintf(path, sizeof(path), "/data/%s", entry->d_name);
+
+    if (entry->d_type == DT_DIR) {
+      // Hanya bersihkan folder hasil record EKG (dimulai dengan "ecg_archive")
+      if (strncmp(entry->d_name, "ecg_archive", 11) == 0) {
+        DIR *subdir = opendir(path);
+        if (subdir) {
+          struct dirent *subentry;
+          while ((subentry = readdir(subdir)) != NULL) {
+            if (subentry->d_type == DT_REG) {
+              char filepath[768];
+              snprintf(filepath, sizeof(filepath), "%s/%s", path, subentry->d_name);
+              unlink(filepath);
+              deleted_any = true;
+            }
+          }
+          closedir(subdir);
+        }
+        rmdir(path);
+        deleted_any = true;
+      }
+    } else if (entry->d_type == DT_REG) {
+      // Hapus file reguler di root /data jika ada
+      unlink(path);
+      deleted_any = true;
+    }
+  }
+  closedir(dir);
+
+  if (deleted_any) {
+    ESP_LOGI("boot_clean", "Storage telah dibersihkan dari file sisa sebelumnya.");
+  } else {
+    ESP_LOGI("boot_clean", "Tidak ada sisa file lama, storage bersih.");
+  }
+
+  // Unmount dan expose kembali ke USB Host agar siap digunakan PC/Mesin EKG
+  storage_manager_expose_to_usb();
+}
+
 /* ─────────────────────────────────────────────────────────────
  * app_main — Entry Point
  * ───────────────────────────────────────────────────────────── */
@@ -578,6 +649,9 @@ void app_main(void) {
 
   /* Mulai LED Indicator Task paling awal agar LED langsung mati sejak awal booting */
   xTaskCreate(led_task, "led_task", 2048, NULL, 3, NULL);
+
+  /* Cek dan hapus sisa file rekaman EKG jika ada sebelum delay 5 detik */
+  clean_storage_on_boot();
 
   ESP_LOGI(TAG, "Menunggu 5 detik sebelum memulai semua proses...");
   vTaskDelay(pdMS_TO_TICKS(5000));
