@@ -581,6 +581,39 @@
     let countdownInterval = null;
     let otaFirmwareUrl = '';
     let otaPollInterval = null;
+    let otaRunning = false;
+
+    /* ─── Pause/Resume countdown saat OTA berjalan ─── */
+    function pauseCountdown() {
+      if (otaRunning) return;
+      otaRunning = true;
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+      // Tampilkan status khusus di timer
+      const el  = document.getElementById('countdown');
+      const bar = document.getElementById('btn-extend');
+      el.textContent = '⏸ OTA';
+      el.className = 'offline';
+      bar.disabled = true;
+      bar.textContent = '⏱ OTA Berjalan...';
+    }
+
+    function resumeCountdown() {
+      if (!otaRunning) return;
+      otaRunning = false;
+      // Sync dari server dulu sebelum lanjut countdown
+      fetchApStatus().then(() => {
+        if (countdownInterval) clearInterval(countdownInterval);
+        countdownInterval = setInterval(() => {
+          if (remainingSeconds > 0) {
+            remainingSeconds--;
+            updateDisplay();
+          } else {
+            clearInterval(countdownInterval);
+          }
+        }, 1000);
+      });
+    }
 
     function formatTime(sec) {
       if (sec <= 0) return 'Offline';
@@ -716,6 +749,9 @@
       badge.textContent = 'Downloading';
       badge.className = 'ota-badge downloading';
 
+      // ── Pause countdown di browser saat OTA dimulai ──
+      pauseCountdown();
+
       fetch('/ota/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -731,12 +767,14 @@
             card.className = 'ota-card error';
             btn.disabled = false;
             btn.textContent = '⬇ Coba Lagi';
+            resumeCountdown(); // Gagal start — lanjutkan countdown
           }
         })
         .catch(() => {
           card.className = 'ota-card error';
           btn.disabled = false;
           btn.textContent = '⬇ Coba Lagi';
+          resumeCountdown(); // Gagal start — lanjutkan countdown
         });
     }
 
@@ -758,6 +796,7 @@
             label.textContent = '100% — Reboot otomatis...';
             title.textContent = '✅ Update Berhasil! Rebooting...';
             document.getElementById('btn-ota').style.display = 'none';
+            // Countdown tidak perlu dilanjutkan — device akan reboot
           } else if (data.state === 'failed') {
             clearInterval(otaPollInterval);
             card.className = 'ota-card error';
@@ -765,6 +804,8 @@
             const btn = document.getElementById('btn-ota');
             btn.disabled = false;
             btn.textContent = '⬇ Coba Lagi';
+            // ── Lanjutkan countdown setelah OTA gagal ──
+            resumeCountdown();
           }
         })
         .catch(() => {});
