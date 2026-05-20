@@ -33,7 +33,7 @@
  *   WIFI_CONNECTING  = Putih Berkedip Cepat — Sedang mencari/konek ke WiFi
  *   AP_MODE          = Putih Berkedip Lambat — Mode Konfigurasi (AP aktif)
  *   ERROR            = Merah Solid — Koneksi WiFi / FTP gagal
- *   BLINK_SLOW       = Biru Berkedip Lambat — Safeguard 5 detik aktif
+ *   BLINK_SLOW       = Biru Berkedip Lambat — Safeguard 1 detik aktif
  *   BLINK_FAST       = Biru Berkedip Cepat — Sedang upload ke FTP
  *   ON_SOLID         = Hijau Solid (2 detik) — Upload sukses
  * ───────────────────────────────────────────────────────────── */
@@ -198,11 +198,11 @@ esp_err_t __wrap_sdmmc_read_sectors(sdmmc_card_t *card, void *dst,
  *  1. Pantau g_last_sd_activity_ms. Jika berubah, berarti mesin EKG sedang
  * membaca/menulis.
  *  2. Jika mesin EKG sibuk, LED mati (OFF).
- *  3. Jika waktu sejak aktivitas terakhir mencapai 15 detik (Safeguard),
+ *  3. Jika waktu sejak aktivitas terakhir mencapai 1 detik (Safeguard),
  *     maka bisa dipastikan mesin EKG benar-benar telah selesai.
  *  4. Ambil alih USB, eksekusi Upload.
  * ───────────────────────────────────────────────────────────── */
-#define IDLE_SAFEGUARD_MS 5000 // Jeda aman 5 detik setelah write terakhir
+#define IDLE_SAFEGUARD_MS 1000 // Jeda aman 1 detik setelah write terakhir
 #define IDLE_POLL_MS 500       // Cek setiap 500ms
 
 static void idle_detector_task(void *arg) {
@@ -576,10 +576,13 @@ void app_main(void) {
    * titik ini, bootloader TIDAK rollback ke firmware lama (menjaga loop update aman). */
   esp_ota_mark_app_valid_cancel_rollback();
 
-  ESP_LOGI(TAG, "=== ECG Dongle Booting — Firmware v%s ===", ota_manager_get_current_version());
-
-  /* Mulai LED Indicator Task paling awal */
+  /* Mulai LED Indicator Task paling awal agar LED langsung mati sejak awal booting */
   xTaskCreate(led_task, "led_task", 2048, NULL, 3, NULL);
+
+  ESP_LOGI(TAG, "Menunggu 5 detik sebelum memulai semua proses...");
+  vTaskDelay(pdMS_TO_TICKS(5000));
+
+  ESP_LOGI(TAG, "=== ECG Dongle Booting — Firmware v%s ===", ota_manager_get_current_version());
 
   /* Mulai task pemantau tombol */
   xTaskCreate(reset_btn_task, "reset_btn", 4096, NULL, 5, NULL);

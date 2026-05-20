@@ -72,7 +72,7 @@ Dongle menggunakan Smart RGB LED (WS2812/NeoPixel) sebagai indikator sistem terp
 | **Putih** | Berkedip Cepat | **Connecting**: Sedang berusaha terhubung ke jaringan WiFi rumah sakit. |
 | **Putih** | Berkedip Lambat | **AP Mode**: Dongle masuk ke mode Konfigurasi (WiFi `ECG-Gateway-XXXX` memancar). Buka portal `192.168.4.1` dari HP Anda. |
 | **Putih** | Menyala Solid | **Standby**: Perangkat sudah siap pakai dan terhubung ke jaringan. Menunggu mesin EKG mengirim data. |
-| **Biru** | Berkedip Lambat | **Safeguard**: Data dari EKG terdeteksi! Menunggu jeda aman 5 detik. |
+| **Biru** | Berkedip Lambat | **Safeguard**: Data dari EKG terdeteksi! Menunggu jeda aman 1 detik. |
 | **Biru** | Berkedip Cepat | **Uploading**: Mengunggah data EKG di latar belakang menuju Server FTP. |
 | **Hijau** | Menyala Solid (2 Detik) | **Upload Sukses**: Pengiriman file berhasil, file sumber telah dihapus. Sistem akan kembali ke Standby. |
 | **Merah** | 1x Kedip Berulang | **Error WiFi / Offline**: Gagal terkoneksi atau koneksi WiFi terputus. Alat akan terus mencoba reconnect di background. |
@@ -110,7 +110,7 @@ Semua konfigurasi utama terpusat dalam variabel global di bagian atas file `tusb
 | Variabel | Nilai Default | Keterangan |
 | :--- | :--- | :--- |
 | `g_ap_timeout_sec`    | `120`   | Durasi default WiFi AP aktif (detik) |
-| `IDLE_SAFEGUARD_MS`   | `5000`  | Jeda aman sebelum upload otomatis (5 detik) |
+| `IDLE_SAFEGUARD_MS`   | `1000`  | Jeda aman sebelum upload otomatis (1 detik) |
 | `LED_PIN`             | `48`    | GPIO pin indikator Smart RGB LED WS2812 |
 
 ---
