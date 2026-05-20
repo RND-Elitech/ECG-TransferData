@@ -51,6 +51,7 @@ typedef enum {
 } led_state_t;
 
 static volatile led_state_t s_led_state = LED_OFF;
+static volatile bool s_normal_op_running = false;
 
 static void led_task(void *arg) {
   /* Konfigurasi untuk Smart RGB LED (WS2812) via RMT */
@@ -393,19 +394,23 @@ static void ap_timeout_task(void *arg) {
 
     g_ap_timeout_sec--;
   }
-  ESP_LOGI("ap_timeout", "Waktu AP habis. Mematikan AP mode...");
 
-  /* Hentikan web server dengan aman sebelum mematikan AP.
-     Ini mencegah lwIP tiba-tiba memutuskan socket yang sedang diproses httpd,
-     yang memicu bug double-free/heap corruption di ESP-IDF. */
-  web_server_stop();
+  if (s_normal_op_running) {
+    ESP_LOGI("ap_timeout", "Waktu AP habis. Mematikan AP mode...");
 
-  web_server_set_dashboard_mode(false);
-  dns_server_stop();
-  esp_wifi_set_mode(WIFI_MODE_STA);
-  s_led_state = LED_STANDBY;
+    /* Hentikan web server dengan aman sebelum mematikan AP.
+       Ini mencegah lwIP tiba-tiba memutuskan socket yang sedang diproses httpd,
+       yang memicu bug double-free/heap corruption di ESP-IDF. */
+    web_server_stop();
 
-  /* Web server TIDAK dihidupkan kembali (tetap off saat mode normal STA) */
+    web_server_set_dashboard_mode(false);
+    dns_server_stop();
+    esp_wifi_set_mode(WIFI_MODE_STA);
+    s_led_state = LED_STANDBY;
+  } else {
+    ESP_LOGW("ap_timeout", "Koneksi WiFi gagal dan AP timeout habis. Restarting device...");
+    esp_restart();
+  }
 
   vTaskDelete(NULL);
 }
@@ -480,7 +485,7 @@ static bool load_config_from_nvs(void) {
  * Access Point "ECG-Gateway-XXXX" dan menampilkan portal
  * konfigurasi di browser pengguna secara otomatis.
  * ───────────────────────────────────────────────────────────── */
-static void enter_ap_config_mode(void) {
+static void enter_ap_config_mode(bool enable_timeout) {
   s_led_state = LED_AP_MODE;
   ESP_LOGW(TAG, "=== Memasuki Mode Konfigurasi (AP + Captive Portal) ===");
   ESP_LOGW(TAG, "  Hubungkan HP/Laptop ke WiFi: ECG-Gateway-XXXX");
@@ -507,6 +512,15 @@ static void enter_ap_config_mode(void) {
     return;
   }
 
+  if (enable_timeout) {
+    g_ap_timeout_sec = 120;
+    xTaskCreate(ap_timeout_task, "ap_timeout", 8192, NULL, 5, NULL);
+    ESP_LOGI(TAG, "AP Timeout diaktifkan: 120 detik.");
+  } else {
+    g_ap_timeout_sec = 0;
+    ESP_LOGI(TAG, "AP Timeout dinonaktifkan (indefinite).");
+  }
+
   ESP_LOGI(TAG, "Portal konfigurasi aktif. Menunggu input pengguna...");
   /* Task selesai — web server dan dns server berjalan di background
    * task/interrupt */
@@ -516,6 +530,7 @@ static void enter_ap_config_mode(void) {
  * Normal Boot: Koneksi WiFi sukses
  * ───────────────────────────────────────────────────────────── */
 static void run_normal_operation(void) {
+  s_normal_op_running = true;
   /* 3. Inisialisasi storage & USB MSC */
   ESP_LOGI(TAG, "Inisialisasi storage...");
   ESP_ERROR_CHECK(storage_manager_init());
@@ -587,7 +602,7 @@ void app_main(void) {
   /* 1.2 Cek apakah konfigurasi WiFi kosong (Device baru) */
   if (!has_config || strlen(s_wifi_ssid) == 0) {
     ESP_LOGW(TAG, "Konfigurasi kosong! Masuk Mode Konfigurasi (AP)...");
-    enter_ap_config_mode();
+    enter_ap_config_mode(false);
     return;
   }
 
@@ -605,11 +620,12 @@ void app_main(void) {
      */
     ESP_LOGW(TAG, "WiFi gagal terkoneksi (%s). Beralih ke Mode AP...",
              esp_err_to_name(ret));
-    enter_ap_config_mode();
+    enter_ap_config_mode(true);
     return;
   }
 
   /* WiFi OK — boot normal */
   ESP_LOGI(TAG, "WiFi terhubung! Melanjutkan proses normal...");
+  esp_wifi_set_mode(WIFI_MODE_STA);
   run_normal_operation();
 }
