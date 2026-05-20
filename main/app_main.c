@@ -301,7 +301,8 @@ static void boot_btn_task(void *arg) {
           esp_wifi_set_mode(WIFI_MODE_APSTA);
           s_led_state = LED_AP_MODE;
 
-          // Siapkan dashboard portal
+          // Siapkan dan jalankan dashboard portal
+          web_server_start();
           web_server_set_dashboard_mode(true);
           dns_server_start();
 
@@ -361,7 +362,7 @@ static void reset_btn_task(void *arg) {
   }
 }
 
-int32_t g_ap_timeout_sec = 120; // 2 minutes
+int32_t g_ap_timeout_sec = 0; // 0 = AP mode tidak aktif
 
 static void ap_timeout_task(void *arg) {
   while (g_ap_timeout_sec > 0) {
@@ -378,9 +379,9 @@ static void ap_timeout_task(void *arg) {
   web_server_set_dashboard_mode(false);
   dns_server_stop();
   esp_wifi_set_mode(WIFI_MODE_STA);
+  s_led_state = LED_STANDBY;
   
-  /* Hidupkan kembali web server untuk bisa diakses via STA */
-  web_server_start();
+  /* Web server TIDAK dihidupkan kembali (tetap off saat mode normal STA) */
   
   vTaskDelete(NULL);
 }
@@ -516,18 +517,8 @@ static void run_normal_operation(void) {
   ESP_ERROR_CHECK(mdns_init());
   mdns_hostname_set("medlink-dongle");
   mdns_instance_name_set("MedLink Dongle ECG");
-  mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
-  ESP_LOGI(TAG, "mDNS aktif. Akses via: http://medlink-dongle.local");
-
-  /* 9. Mulai Web Server dan DNS (Captive Portal Dashboard) */
-  ESP_LOGI(TAG, "Memulai Web Server dan DNS (Captive Portal)...");
-  ESP_ERROR_CHECK(web_server_start());
-  web_server_set_dashboard_mode(
-      true); /* Tampilkan dashboard.html saat APSTA aktif */
-  ESP_ERROR_CHECK(dns_server_start());
-
-  /* 10. Mulai task countdown AP Timeout */
-  xTaskCreate(ap_timeout_task, "ap_timeout", 8192, NULL, 5, NULL);
+  /* 9. Web Server dimatikan saat mode normal (hanya aktif jika tombol BOOT ditekan) */
+  // web_server_start(); dihapus sesuai permintaan
 
   /* 12. Mulai Idle Detector (auto-upload saat USB idle 30 detik) */
   xTaskCreate(idle_detector_task, "idle_det", 4096, NULL, 4, NULL);
