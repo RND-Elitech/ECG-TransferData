@@ -3,10 +3,12 @@
 
 #include "esp_check.h"
 #include "esp_log.h"
+#include "esp_partition.h"
 #include "esp_vfs_fat.h"
 #include "sdkconfig.h"
 #include "tinyusb.h"
 #include "tusb_msc_storage.h"
+#include "wear_levelling.h"
 #include <dirent.h>
 #include <string.h>
 #include <unistd.h>
@@ -22,6 +24,12 @@
 static const char *TAG = "storage_manager";
 
 #define STORAGE_BASE_PATH "/data"
+
+/* Jumlah percobaan deteksi SD card sebelum fallback ke flash */
+#define SDCARD_MAX_RETRY  3
+
+/* Status media yang sedang aktif */
+static bool s_using_sdcard = false;
 
 /* ─── Descriptor USB (MSC) ─── */
 #define EPNUM_MSC 1
@@ -93,7 +101,7 @@ static void _on_mount_changed(tinyusb_msc_event_t *event) {
            event->mount_changed_data.is_mounted ? "Ya" : "Tidak");
 }
 
-/* ─── Init SD Card via built-in SDMMC ─── */
+/* ─── Init SD Card via built-in SDMMC (percobaan terbatas, lalu return error) ─── */
 static esp_err_t _init_sdmmc(void) {
   static sdmmc_card_t *card = NULL;
   sdmmc_host_t host = SDMMC_HOST_DEFAULT();
@@ -121,13 +129,38 @@ static esp_err_t _init_sdmmc(void) {
   if (!card)
     return ESP_ERR_NO_MEM;
 
-  ESP_ERROR_CHECK((*host.init)());
-  ESP_ERROR_CHECK(sdmmc_host_init_slot(host.slot, &slot));
-
-  while (sdmmc_card_init(&host, card)) {
-    ESP_LOGE(TAG, "SD card tidak terdeteksi. Coba lagi dalam 3 detik...");
-    vTaskDelay(pdMS_TO_TICKS(3000));
+  esp_err_t ret = (*host.init)();
+  if (ret != ESP_OK) {
+    free(card);
+    card = NULL;
+    return ret;
   }
+
+  ret = sdmmc_host_init_slot(host.slot, &slot);
+  if (ret != ESP_OK) {
+    (*host.deinit)();
+    free(card);
+    card = NULL;
+    return ret;
+  }
+
+  /* Coba inisialisasi SD card dengan jumlah percobaan terbatas */
+  int retry = 0;
+  while ((ret = sdmmc_card_init(&host, card)) != ESP_OK) {
+    retry++;
+    if (retry >= SDCARD_MAX_RETRY) {
+      ESP_LOGW(TAG, "SD card tidak terdeteksi setelah %d percobaan. "
+                    "Beralih ke SPI Flash internal...", SDCARD_MAX_RETRY);
+      (*host.deinit)();
+      free(card);
+      card = NULL;
+      return ESP_ERR_NOT_FOUND;
+    }
+    ESP_LOGW(TAG, "SD card tidak terdeteksi (percobaan %d/%d). "
+                  "Coba lagi dalam 1 detik...", retry, SDCARD_MAX_RETRY);
+    vTaskDelay(pdMS_TO_TICKS(1000));
+  }
+
   sdmmc_card_print_info(stdout, card);
 
   const tinyusb_msc_sdmmc_config_t cfg = {
@@ -138,6 +171,42 @@ static esp_err_t _init_sdmmc(void) {
   return tinyusb_msc_storage_init_sdmmc(&cfg);
 }
 
+/* ─── Init SPI Flash internal sebagai fallback ─── */
+static esp_err_t _init_spiflash(void) {
+  ESP_LOGI(TAG, "Menggunakan SPI Flash internal sebagai storage...");
+
+  const esp_partition_t *part = esp_partition_find_first(
+      ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, "storage");
+  if (!part) {
+    ESP_LOGE(TAG, "Partisi 'storage' (FAT) tidak ditemukan di tabel partisi!");
+    return ESP_ERR_NOT_FOUND;
+  }
+
+  static wl_handle_t wl_handle = WL_INVALID_HANDLE;
+  esp_err_t ret = wl_mount(part, &wl_handle);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "wl_mount gagal: %s", esp_err_to_name(ret));
+    return ret;
+  }
+
+  const tinyusb_msc_spiflash_config_t cfg = {
+      .wl_handle              = wl_handle,
+      .callback_mount_changed = _on_mount_changed,
+      .mount_config.max_files = 5,
+  };
+
+  ret = tinyusb_msc_storage_init_spiflash(&cfg);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "tinyusb_msc_storage_init_spiflash gagal: %s", esp_err_to_name(ret));
+    wl_unmount(wl_handle);
+    return ret;
+  }
+
+  ESP_LOGI(TAG, "SPI Flash internal siap (partisi: %s, ukuran: %"PRIu32" KB)",
+           part->label, part->size / 1024);
+  return ESP_OK;
+}
+
 
 /* ─── Public API ─── */
 
@@ -145,9 +214,26 @@ esp_err_t storage_manager_init(void) {
   /* Dapatkan SN perangkat secara dinamis */
   device_info_get_sn(s_serial_number, sizeof(s_serial_number));
 
-  ESP_RETURN_ON_ERROR(_init_sdmmc(), TAG, "Inisialisasi SDMMC gagal");
-  ESP_ERROR_CHECK(tinyusb_msc_register_callback(TINYUSB_MSC_EVENT_MOUNT_CHANGED,
-                                                _on_mount_changed));
+  /* Coba SD card terlebih dahulu; jika tidak ada, fallback ke SPI Flash */
+  esp_err_t ret = _init_sdmmc();
+  if (ret == ESP_OK) {
+    s_using_sdcard = true;
+    ESP_LOGI(TAG, "Storage: menggunakan SD Card");
+  } else {
+    ESP_LOGW(TAG, "SD Card tidak tersedia (err: %s), beralih ke SPI Flash...",
+             esp_err_to_name(ret));
+    ret = _init_spiflash();
+    if (ret != ESP_OK) {
+      ESP_LOGE(TAG, "Inisialisasi SPI Flash juga gagal: %s", esp_err_to_name(ret));
+      return ret;
+    }
+    s_using_sdcard = false;
+    ESP_LOGI(TAG, "Storage: menggunakan SPI Flash internal");
+  }
+
+  ESP_RETURN_ON_ERROR(tinyusb_msc_register_callback(TINYUSB_MSC_EVENT_MOUNT_CHANGED,
+                                                     _on_mount_changed),
+                      TAG, "Register callback gagal");
 
   /* Pasang USB MSC driver */
   const tinyusb_config_t tusb_cfg = {
@@ -167,7 +253,8 @@ esp_err_t storage_manager_init(void) {
   ESP_RETURN_ON_ERROR(tinyusb_driver_install(&tusb_cfg), TAG,
                       "TinyUSB install gagal");
 
-  ESP_LOGI(TAG, "Storage manager siap (USB MSC aktif)");
+  ESP_LOGI(TAG, "Storage manager siap (USB MSC aktif, media: %s)",
+           s_using_sdcard ? "SD Card" : "SPI Flash");
   return ESP_OK;
 }
 

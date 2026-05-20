@@ -5,13 +5,13 @@
 #include <stdint.h>
 
 /**
- * @brief Inisialisasi media penyimpanan (SPI Flash atau SDMMC).
+ * @brief Inisialisasi media penyimpanan dengan auto-fallback.
  *
- * Memilih media berdasarkan konfigurasi Kconfig:
- *   - CONFIG_EXAMPLE_STORAGE_MEDIA_SPIFLASH  → internal SPI Flash
- *   - Selain itu                              → SDMMC
+ * Mencoba menginisialisasi SD Card (SDMMC) terlebih dahulu.
+ * Jika SD Card tidak terdeteksi setelah SDCARD_MAX_RETRY percobaan,
+ * secara otomatis beralih ke SPI Flash internal (partisi 'storage', FAT).
  *
- * @return ESP_OK jika berhasil
+ * @return ESP_OK jika berhasil (dengan media apapun)
  */
 esp_err_t storage_manager_init(void);
 

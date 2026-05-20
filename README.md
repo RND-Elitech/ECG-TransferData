@@ -89,10 +89,11 @@ Sistem menggunakan **Captive Portal** yang secara otomatis muncul saat pengguna 
 Muncul otomatis jika perangkat belum dikonfigurasi atau gagal terhubung ke WiFi.
 *   **Fungsi**: Konfigurasi SSID WiFi, Password WiFi, dan detail akun FTP Server.
 *   **Akses**: Otomatis atau via `http://192.168.4.1`.
+*   **Indikator Sinyal**: Saat melakukan scan WiFi, kualitas sinyal ditampilkan menggunakan label teks dinamis berwarna (Excellent, Good, Fair, Poor) berdasarkan nilai RSSI, memberikan pengalaman pengguna yang lebih intuitif dibanding angka dBm mentah.
 
 ### 2. Dashboard Portal (`dashboard.html`)
-Muncul saat perangkat beroperasi normal (Mode AP+STA).
-*   **Trigger**: Otomatis selama 2 menit setelah boot, atau dipicu via tombol BOOT (3 detik).
+Web Server **tidak berjalan secara otomatis** saat perangkat berhasil terhubung ke WiFi pada kondisi normal (untuk menghemat memori dan menghindari gangguan). Portal ini hanya diaktifkan secara manual.
+*   **Trigger**: Dipicu **hanya** dengan menahan tombol **BOOT (3 detik)**. Mode AP akan menyala selama waktu yang ditentukan. Setelah waktu habis, LED indikator akan kembali ke mode Standby.
 *   **Fitur**:
     *   **AP Timer**: Menampilkan sisa waktu WiFi AP akan aktif.
     *   **Extend Time**: Menambah durasi aktif WiFi AP (+1 menit).
@@ -151,9 +152,17 @@ Semua konfigurasi utama terpusat dalam variabel global di bagian atas file `tusb
 
 ---
 
-## Persyaratan Perangkat Keras
+## Sistem Penyimpanan (Storage) & Persyaratan Perangkat Keras
+
 - ESP32-S2 atau ESP32-S3 (memiliki dukungan USB OTG).
-- Slot SD Card atau Flash eksternal.
+- Slot SD Card eksternal.
+
+### Auto-Fallback Storage (SD Card ➔ Internal SPI Flash)
+Sistem memiliki mekanisme failover otomatis untuk memastikan perangkat tetap dapat digunakan meski tidak ada SD Card yang terpasang:
+1. Saat dinyalakan, perangkat akan mencoba mendeteksi SD Card sebanyak **3 kali percobaan**.
+2. Jika SD Card terdeteksi, perangkat akan beroperasi normal menggunakan kapasitas eksternal.
+3. Jika gagal setelah 3 percobaan, perangkat secara otomatis **beralih menggunakan Internal SPI Flash** melalui partisi FAT `storage` berkapasitas ~1MB yang didukung dengan `wear_levelling`.
+4. Fallback ini menjamin mesin EKG tidak akan mengalami *error write* meskipun pengguna lupa memasukkan memori fisik.
 
 ---
 
