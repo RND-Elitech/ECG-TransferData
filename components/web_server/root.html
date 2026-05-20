@@ -827,12 +827,67 @@
         max-height: 120px;
       }
     }
+
+    /* Full-screen Loading Overlay */
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .loading-overlay.active {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .loading-spinner {
+      width: 60px;
+      height: 60px;
+      border: 6px solid rgba(0, 39, 162, 0.1);
+      border-top-color: #0027a2;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+
+    .loading-text {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #0027a2;
+      text-align: center;
+    }
+    
+    .loading-subtext {
+      font-size: 0.95rem;
+      color: #4b5563;
+      margin-top: 8px;
+      text-align: center;
+    }
   </style>
 </head>
 
 <body>
+  <div id="full-loading" class="loading-overlay">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">Connecting to WiFi...</div>
+    <div class="loading-subtext">Attempting to connect to your WiFi network. Please wait...</div>
+  </div>
+
   <div class="container">
-    <h1>MedLink Dongle Setup</h1>
+    <h1>MedLink Gateway Setup</h1>
 
     <!-- Network Type Toggle (Removed) -->
     <!-- WiFi Section -->
@@ -855,7 +910,7 @@
           <!-- Server Host Removed -->
 
           <div class="input-group">
-            <label for="wifi-ssid">📶 WiFi Network Name (SSID)</label>
+            <label for="wifi-ssid">📶 WiFi Name (SSID)</label>
             <input type="text" id="wifi-ssid" name="ssid" required placeholder="Enter WiFi network name" />
           </div>
 
@@ -877,10 +932,10 @@
 
           <!-- IP Mode Selection Dropdown -->
           <div class="input-group">
-            <label for="wifi-ip-mode">⚙️ IP Configuration Mode</label>
+            <label for="wifi-ip-mode">⚙️ IP Settings</label>
             <select id="wifi-ip-mode" name="ip_mode" required class="custom-select">
-              <option value="dynamic">Dynamic IP (DHCP)</option>
-              <option value="static">Static IP</option>
+              <option value="dynamic">Automatic IP (DHCP)</option>
+              <option value="static">Static IP (Manual)</option>
             </select>
           </div>
 
@@ -904,7 +959,7 @@
           </div>
 
           <div style="text-align: center; margin: 25px 0 15px; border-bottom: 1px solid rgba(0, 39, 162, 0.2); line-height: 0.1em;">
-            <span style="background:#fff; padding:0 10px; color:#0027a2; font-weight:600; font-size: 14px;">FTP Server Configuration</span>
+            <span style="background:#fff; padding:0 10px; color:#0027a2; font-weight:600; font-size: 14px;">FTP Server Settings</span>
           </div>
 
           <div class="input-group">
@@ -942,7 +997,7 @@
           </div>
 
           <button type="submit" id="save-btn" class="connect-button">
-            Apply & Save
+            Save & Connect
           </button>
         </form>
       </div>
@@ -1174,19 +1229,19 @@
 
       // Common validations
       if (!ssidInput.value) {
-        showErrorMessage("SSID cannot be empty!");
+        showErrorMessage("WiFi name (SSID) cannot be empty!");
         return;
       }
       if (ssidInput.value.length > 31) {
-        showErrorMessage("SSID must be 31 characters or less!");
+        showErrorMessage("WiFi name (SSID) must be 31 characters or less!");
         return;
       }
       if (passwordInput.value.length < 8) {
-        showErrorMessage("Password must be at least 8 characters!");
+        showErrorMessage("WiFi password must be at least 8 characters!");
         return;
       }
       if (passwordInput.value.length > 63) {
-        showErrorMessage("Password must be 63 characters or less!");
+        showErrorMessage("WiFi password must be 63 characters or less!");
         return;
       }
 
@@ -1196,25 +1251,28 @@
         const subnetInput = document.getElementById("wifi-subnet-mask");
         const gatewayInput = document.getElementById("wifi-gateway");
         if (!ipInput.value || !ipRegex.test(ipInput.value)) {
-          showErrorMessage("Invalid IP address format!");
+          showErrorMessage("Please enter a valid IP address!");
           return;
         }
         if (!subnetInput.value || !ipRegex.test(subnetInput.value)) {
-          showErrorMessage("Invalid subnet mask format!");
+          showErrorMessage("Please enter a valid subnet mask!");
           return;
         }
         if (!gatewayInput.value || !ipRegex.test(gatewayInput.value)) {
-          showErrorMessage("Invalid gateway format!");
+          showErrorMessage("Please enter a valid gateway address!");
           return;
         }
       }
 
-      await submitForm(this, submitButton, "🔄 Saving & Rebooting...", "💾 Apply & Save");
+      await submitForm(this, submitButton, "🔄 Connecting...", "💾 Save & Connect");
     });
 
     async function submitForm(form, submitButton, loadingText, originalText) {
       submitButton.innerHTML = loadingText;
       submitButton.disabled = true;
+      
+      const overlay = document.getElementById('full-loading');
+      if (overlay) overlay.classList.add('active');
 
       try {
         const response = await fetch("/save", {
@@ -1227,12 +1285,19 @@
         const data = await response.json();
 
         if (data.status === "success") {
+          if (overlay) {
+             overlay.querySelector('.loading-text').innerHTML = "Connected!";
+             overlay.querySelector('.loading-subtext').innerHTML = "WiFi connection successful. Settings have been updated.";
+             overlay.querySelector('.loading-spinner').style.display = "none";
+          }
           showSuccessMessage(data.message);
         } else {
+          if (overlay) overlay.classList.remove('active');
           showErrorMessage(data.message, data.ssid);
         }
       } catch (error) {
-        showErrorMessage("Error connecting to server!");
+        if (overlay) overlay.classList.remove('active');
+        showErrorMessage("Failed to connect to the device. Please try again!");
       } finally {
         submitButton.innerHTML = originalText;
         submitButton.disabled = false;

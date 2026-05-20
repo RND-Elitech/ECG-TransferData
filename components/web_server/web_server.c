@@ -29,6 +29,7 @@
 #include "esp_system.h"
 #include "cJSON.h"
 #include "ota_manager.h"
+#include "wifi_manager.h"
 
 static const char *TAG = "web_server";
 static httpd_handle_t s_server = NULL;
@@ -221,24 +222,45 @@ static esp_err_t handler_save(httpd_req_t *req) {
 
     /* Validasi minimal */
     if (wifi_ssid[0] == '\0') {
-        const char *resp = "{\"status\":\"error\",\"message\":\"SSID cannot be empty\"}";
+        const char *resp = "{\"status\":\"error\",\"message\":\"WiFi Name (SSID) cannot be empty\"}";
         httpd_resp_set_type(req, "application/json");
         httpd_resp_sendstr(req, resp);
         return ESP_OK;
     }
     if (strlen(wifi_pass) < 8) {
-        const char *resp = "{\"status\":\"error\",\"message\":\"Password minimal 8 karakter\"}";
+        const char *resp = "{\"status\":\"error\",\"message\":\"Password must be at least 8 characters\"}";
         httpd_resp_set_type(req, "application/json");
         httpd_resp_sendstr(req, resp);
         return ESP_OK;
     }
+
+    /* Uji koneksi WiFi sebelum menyimpan dan melakukan restart */
+    ESP_LOGI(TAG, "Menguji koneksi WiFi ke SSID: '%s'...", wifi_ssid);
+    
+    // Gunakan timeout 15 detik (15000 ms) untuk pengujian
+    esp_err_t conn_err = wifi_manager_start(wifi_ssid, wifi_pass, 15000);
+    
+    if (conn_err != ESP_OK) {
+        ESP_LOGE(TAG, "Uji koneksi WiFi gagal: %s", esp_err_to_name(conn_err));
+        
+        char resp_err[256];
+        snprintf(resp_err, sizeof(resp_err), 
+                 "{\"status\":\"error\",\"message\":\"Failed to connect to WiFi '%s'. Incorrect password or network not found.\"}", 
+                 wifi_ssid);
+        
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, resp_err);
+        return ESP_OK;
+    }
+
+    ESP_LOGI(TAG, "Uji koneksi berhasil! Menyimpan konfigurasi ke NVS...");
 
     /* Simpan ke NVS */
     nvs_handle_t nvs_h;
     esp_err_t err = nvs_open("config", NVS_READWRITE, &nvs_h);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Gagal membuka NVS: %s", esp_err_to_name(err));
-        const char *resp = "{\"status\":\"error\",\"message\":\"NVS error\"}";
+        const char *resp = "{\"status\":\"error\",\"message\":\"Failed to save settings (NVS error)\"}";
         httpd_resp_set_type(req, "application/json");
         httpd_resp_sendstr(req, resp);
         return ESP_OK;
@@ -266,7 +288,7 @@ static esp_err_t handler_save(httpd_req_t *req) {
 
     /* Kirim respon sukses sebelum restart */
     const char *resp_ok = "{\"status\":\"success\","
-                          "\"message\":\"Konfigurasi disimpan! ESP32 akan restart dan mencoba konek ke WiFi...\"}";
+                          "\"message\":\"Configuration saved! The device will restart and connect to the WiFi network...\"}";
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, resp_ok);
 

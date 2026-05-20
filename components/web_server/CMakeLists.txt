@@ -11,4 +11,5 @@ idf_component_register(
         json
         lwip
         ota_manager
+        wifi_manager
 )
