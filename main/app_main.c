@@ -365,26 +365,51 @@ static void reset_btn_task(void *arg) {
 int32_t g_ap_timeout_sec = 0; // 0 = AP mode tidak aktif
 
 static void ap_timeout_task(void *arg) {
+  bool ota_pause_logged = false;
+
   while (g_ap_timeout_sec > 0) {
     vTaskDelay(pdMS_TO_TICKS(1000));
+
+    /* ── Jeda countdown jika OTA sedang berjalan ─────────────────────────
+     * Ini memastikan AP tidak dimatikan di tengah proses download firmware,
+     * yang akan memutus koneksi WiFi dan menggagalkan OTA.
+     * ─────────────────────────────────────────────────────────────────── */
+    ota_state_t ota_state = ota_manager_get_state();
+    if (ota_state == OTA_STATE_CHECKING || ota_state == OTA_STATE_DOWNLOADING) {
+      if (!ota_pause_logged) {
+        ESP_LOGI("ap_timeout", "OTA sedang berjalan — countdown AP ditahan hingga OTA selesai.");
+        ota_pause_logged = true;
+      }
+      /* Tidak decrement: countdown AP berhenti selama OTA aktif */
+      continue;
+    }
+
+    /* OTA sudah selesai/tidak berjalan — reset flag log dan lanjutkan countdown */
+    if (ota_pause_logged) {
+      ESP_LOGI("ap_timeout", "OTA selesai — countdown AP dilanjutkan (%"PRId32" detik sisa).",
+               g_ap_timeout_sec);
+      ota_pause_logged = false;
+    }
+
     g_ap_timeout_sec--;
   }
-  ESP_LOGI("ap_timeout", "Waktu 2 menit habis. Mematikan AP mode...");
-  
+  ESP_LOGI("ap_timeout", "Waktu AP habis. Mematikan AP mode...");
+
   /* Hentikan web server dengan aman sebelum mematikan AP.
      Ini mencegah lwIP tiba-tiba memutuskan socket yang sedang diproses httpd,
      yang memicu bug double-free/heap corruption di ESP-IDF. */
   web_server_stop();
-  
+
   web_server_set_dashboard_mode(false);
   dns_server_stop();
   esp_wifi_set_mode(WIFI_MODE_STA);
   s_led_state = LED_STANDBY;
-  
+
   /* Web server TIDAK dihidupkan kembali (tetap off saat mode normal STA) */
-  
+
   vTaskDelete(NULL);
 }
+
 
 static const char *TAG = "app_main";
 
