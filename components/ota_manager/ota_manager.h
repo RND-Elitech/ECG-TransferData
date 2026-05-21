@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 /* ─── Versi firmware saat ini ─── */
-#define APP_VERSION "1.0.4"
+#define APP_VERSION "1.0.5"
 
 /* ─── Supabase Project Credentials ─── */
 /* Ganti dengan URL dan Anon Key dari Supabase Project Settings -> API Anda */
