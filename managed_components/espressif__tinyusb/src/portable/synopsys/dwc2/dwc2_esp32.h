@@ -37,7 +37,11 @@
 
 #include "esp_intr_alloc.h"
 #include "soc/periph_defs.h"
+
+// ESP32-S31 does not have USB_WRAP peripheral (HS-only with UTMI PHY)
+#if !TU_CHECK_MCU(OPT_MCU_ESP32S31)
 #include "soc/usb_wrap_struct.h"
+#endif
 
 #if TU_CHECK_MCU(OPT_MCU_ESP32S2, OPT_MCU_ESP32S3)
 #define DWC2_FS_REG_BASE   0x60080000UL
@@ -45,6 +49,23 @@
 
 static const dwc2_controller_t _dwc2_controller[] = {
   { .reg_base = DWC2_FS_REG_BASE, .irqnum = ETS_USB_INTR_SOURCE, .ep_count = 7, .ep_in_count = 5, .ep_fifo_size = 1024 }
+};
+
+#elif TU_CHECK_MCU(OPT_MCU_ESP32H4)
+// H4's USB_WRAP register block uses "wrap_*" field names. Map them to the
+// names used by TinyUSB's DWC2 port to keep the source unchanged.
+#define otg_conf                wrap_otg_conf
+#define pad_pull_override       wrap_pad_pull_override
+#define dp_pullup               wrap_dp_pullup
+#define dp_pulldown             wrap_dp_pulldown
+#define dm_pullup               wrap_dm_pullup
+#define dm_pulldown             wrap_dm_pulldown
+
+#define DWC2_FS_REG_BASE   0x60040000UL
+#define DWC2_EP_MAX        7
+
+static const dwc2_controller_t _dwc2_controller[] = {
+  { .reg_base = DWC2_FS_REG_BASE, .irqnum = ETS_USB_OTG11_INTR_SOURCE, .ep_count = 7, .ep_in_count = 5, .ep_fifo_size = 1024 }
 };
 
 #elif TU_CHECK_MCU(OPT_MCU_ESP32P4)
@@ -55,8 +76,16 @@ static const dwc2_controller_t _dwc2_controller[] = {
 // On ESP32 for consistency we associate
 // - Port0 to OTG_FS, and Port1 to OTG_HS
 static const dwc2_controller_t _dwc2_controller[] = {
-{ .reg_base = DWC2_FS_REG_BASE, .irqnum = ETS_USB_OTG11_CH0_INTR_SOURCE, .ep_count = 7, .ep_in_count = 5, .ep_fifo_size = 1024 },
-{ .reg_base = DWC2_HS_REG_BASE, .irqnum = ETS_USB_OTG_INTR_SOURCE, .ep_count = 16, .ep_in_count = 8, .ep_fifo_size = 4096 }
+  { .reg_base = DWC2_FS_REG_BASE, .irqnum = ETS_USB_OTG11_CH0_INTR_SOURCE, .ep_count = 7, .ep_in_count = 5, .ep_fifo_size = 1024 },
+  { .reg_base = DWC2_HS_REG_BASE, .irqnum = ETS_USB_OTG_INTR_SOURCE, .ep_count = 16, .ep_in_count = 8, .ep_fifo_size = 4096 }
+};
+
+#elif TU_CHECK_MCU(OPT_MCU_ESP32S31)
+#define DWC2_HS_REG_BASE   0x20300000UL
+#define DWC2_EP_MAX        16
+
+static const dwc2_controller_t _dwc2_controller[] = {
+  { .reg_base = DWC2_HS_REG_BASE, .irqnum = ETS_USB_OTGHS_INTR_SOURCE, .ep_count = 16, .ep_in_count = 8, .ep_fifo_size = 4096 }
 };
 #endif
 

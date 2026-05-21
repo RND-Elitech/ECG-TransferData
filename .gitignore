@@ -6,6 +6,7 @@ sdkconfig.old
 # Visual Studio Code
 .vscode/
 *.code-workspace
+*.settings.json
 
 # Python
 __pycache__/

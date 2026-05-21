@@ -1,0 +1,43 @@
+#pragma once
+
+#include "esp_err.h"
+#include <stdbool.h>
+#include <stdint.h>
+
+/**
+ * @brief Inisialisasi media penyimpanan dengan auto-fallback.
+ *
+ * Mencoba menginisialisasi SD Card (SDMMC) terlebih dahulu.
+ * Jika SD Card tidak terdeteksi setelah SDCARD_MAX_RETRY percobaan,
+ * secara otomatis beralih ke SPI Flash internal (partisi 'storage', FAT).
+ *
+ * @return ESP_OK jika berhasil (dengan media apapun)
+ */
+esp_err_t storage_manager_init(void);
+
+/**
+ * @brief Mount storage ke filesystem aplikasi (/data).
+ *
+ * @return ESP_OK jika berhasil
+ */
+esp_err_t storage_manager_mount(void);
+
+/**
+ * @brief Unmount storage dari filesystem aplikasi dan serahkan ke USB Host.
+ *
+ * @return ESP_OK jika berhasil
+ */
+esp_err_t storage_manager_expose_to_usb(void);
+
+
+
+
+/**
+ * @brief Cek apakah storage sedang dipakai oleh USB Host.
+ *
+ * @return true jika sedang di-expose ke USB Host
+ */
+bool storage_manager_in_use_by_usb(void);
+
+uint32_t storage_manager_get_sector_count(void);
+uint32_t storage_manager_get_sector_size(void);

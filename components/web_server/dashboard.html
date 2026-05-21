@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MedLink Dongle Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #0f0c29 0%, #1a1a4e 50%, #0d2040 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: rgba(255, 255, 255, 0.97);
+      backdrop-filter: blur(20px);
+      border-radius: 24px;
+      padding: 40px;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1);
+      animation: slideUp 0.5s ease;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 32px;
+    }
+
+    .header-icon {
+      width: 52px;
+      height: 52px;
+      background: linear-gradient(135deg, #0027a2, #764ba2);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 800;
+      color: #111827;
+      line-height: 1.2;
+    }
+
+    h1 span {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: #6b7280;
+      margin-top: 2px;
+    }
+
+    /* ─── AP Timer Card ─── */
+    .ap-timer-card {
+      background: linear-gradient(135deg, #fdf2f8, #fce7f3);
+      border: 2px solid #f9a8d4;
+      border-radius: 16px;
+      padding: 24px;
+      text-align: center;
+      margin-bottom: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .ap-timer-card::before {
+      content: '';
+      position: absolute;
+      top: -30px;
+      right: -30px;
+      width: 100px;
+      height: 100px;
+      background: rgba(219, 39, 119, 0.08);
+      border-radius: 50%;
+    }
+
+    .ap-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #fce7f3;
+      color: #be185d;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 20px;
+      border: 1px solid #f9a8d4;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .ap-badge .dot {
+      width: 6px;
+      height: 6px;
+      background: #be185d;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      50% {
+        opacity: 0.5;
+        transform: scale(0.8);
+      }
+    }
+
+    .timer-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #9d174d;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    #countdown {
+      font-size: 54px;
+      font-weight: 800;
+      color: #be185d;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      margin-bottom: 8px;
+      transition: color 0.3s;
+    }
+
+    #countdown.warning {
+      color: #dc2626;
+    }
+
+    #countdown.offline {
+      color: #9ca3af;
+      font-size: 24px;
+    }
+
+    .timer-desc {
+      font-size: 13px;
+      color: #9d174d;
+      margin-bottom: 20px;
+    }
+
+    #progress-bar-container {
+      background: #fce7f3;
+      border-radius: 8px;
+      height: 8px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+
+    #progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #db2777, #f472b6);
+      border-radius: 8px;
+      transition: width 1s linear;
+    }
+
+    .btn-extend {
+      background: linear-gradient(135deg, #db2777, #be185d);
+      color: white;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      transition: all 0.2s;
+      box-shadow: 0 4px 12px rgba(190, 24, 93, 0.3);
+    }
+
+    .btn-extend:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(190, 24, 93, 0.4);
+    }
+
+    .btn-extend:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .offline-notice {
+      background: #f3f4f6;
+      border: 2px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+      color: #6b7280;
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+
+    /* ─── Info Boxes ─── */
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .info-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 14px;
+    }
+
+    .info-box .label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+
+    .info-box .value {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1e293b;
+      word-break: break-all;
+    }
+
+    /* ─── Divider ─── */
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #e5e7eb;
+    }
+
+    .divider span {
+      font-size: 12px;
+      font-weight: 600;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* ─── Danger Zone ─── */
+    .danger-zone {
+      background: #fef2f2;
+      border: 2px dashed #fca5a5;
+      border-radius: 16px;
+      padding: 24px;
+    }
+
+    .danger-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .danger-icon {
+      font-size: 20px;
+    }
+
+    .danger-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #dc2626;
+    }
+
+    .danger-desc {
+      font-size: 13px;
+      color: #991b1b;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+
+    .danger-zone input[type="password"] {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #fca5a5;
+      border-radius: 10px;
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+      background: white;
+      color: #111827;
+      margin-bottom: 12px;
+      transition: border-color 0.2s;
+      outline: none;
+    }
+
+    .danger-zone input[type="password"]:focus {
+      border-color: #ef4444;
+      box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+    }
+
+    .btn-reset {
+      width: 100%;
+      background: linear-gradient(135deg, #dc2626, #b91c1c);
+      color: white;
+      padding: 13px;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+    }
+
+    .btn-reset:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(220, 38, 38, 0.4);
+    }
+
+    .btn-reset:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* ─── Notification ─── */
+    .notification {
+      display: none;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      margin-top: 12px;
+    }
+
+    .notification.success {
+      display: block;
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #86efac;
+    }
+
+    .notification.error {
+      display: block;
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fca5a5;
+    }
+
+    /* ─── Powered By ─── */
+    .powered-by {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+
+    /* ─── Responsive ─── */
+    @media (max-width: 480px) {
+      .container {
+        padding: 24px 20px;
+      }
+
+      #countdown {
+        font-size: 42px;
+      }
+
+      .info-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* ─── OTA Update Card ─── */
+    .ota-card {
+      margin-top: 20px;
+      border-radius: 14px;
+      padding: 18px 20px;
+      border: 1.5px solid #e5e7eb;
+      background: #f9fafb;
+      transition: all 0.3s ease;
+    }
+    .ota-card.has-update {
+      background: linear-gradient(135deg, #eff6ff, #dbeafe);
+      border-color: #3b82f6;
+    }
+    .ota-card.downloading {
+      background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+      border-color: #22c55e;
+    }
+    .ota-card.error {
+      background: #fef2f2;
+      border-color: #ef4444;
+    }
+    .ota-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 14px;
+      color: #111827;
+      margin-bottom: 8px;
+    }
+    .ota-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #e0e7ff;
+      color: #3730a3;
+    }
+    .ota-badge.new { background: #dcfce7; color: #166534; }
+    .ota-badge.downloading { background: #fef9c3; color: #854d0e; }
+    .ota-desc {
+      font-size: 12.5px;
+      color: #6b7280;
+      line-height: 1.5;
+      margin-bottom: 12px;
+    }
+    .ota-notes {
+      font-size: 12px;
+      color: #374151;
+      background: rgba(255,255,255,0.7);
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      border-left: 3px solid #3b82f6;
+    }
+    .ota-progress-wrap {
+      background: #e5e7eb;
+      border-radius: 99px;
+      height: 8px;
+      overflow: hidden;
+      margin-bottom: 10px;
+      display: none;
+    }
+    .ota-progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #22c55e, #16a34a);
+      border-radius: 99px;
+      transition: width 0.5s ease;
+      width: 0%;
+    }
+    .ota-progress-label {
+      font-size: 11px;
+      color: #6b7280;
+      text-align: center;
+      margin-bottom: 8px;
+      display: none;
+    }
+    .btn-ota {
+      width: 100%;
+      padding: 10px;
+      border-radius: 10px;
+      border: none;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: white;
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-ota:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+    .btn-ota:disabled { background: #9ca3af; cursor: not-allowed; }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>
+        MedLink Dongle Dashboard
+        <span>Setup Portal — APSTA Mode</span>
+      </h1>
+    </div>
+
+    <!-- AP Timer Section -->
+    <div class="ap-timer-card" id="ap-timer-card">
+      <div class="ap-badge"><span class="dot"></span> AP Mode Active</div>
+      <div class="timer-label">Sisa Waktu Setup</div>
+      <div id="countdown">5:00</div>
+      <div class="timer-desc">Selesaikan Reset sebelum waktu habis</div>
+      <div id="progress-bar-container">
+        <div id="progress-bar" style="width:100%"></div>
+      </div>
+      <button class="btn-extend" id="btn-extend" onclick="extendApTime()">
+        ⏱ + Tambah 1 Menit
+      </button>
+    </div>
+
+    <!-- Device Info -->
+    <div class="info-grid" id="info-grid" style="display:none">
+      <div class="info-box">
+        <div class="label">AP SSID</div>
+        <div class="value" id="info-ssid">-</div>
+      </div>
+      <div class="info-box">
+        <div class="label">IP Address</div>
+        <div class="value" id="info-ip">192.168.4.1</div>
+      </div>
+    </div>
+
+    <!-- OTA Update Section -->
+    <div class="ota-card" id="ota-card">
+      <div class="ota-header">
+        <span id="ota-icon">🔄</span>
+        <span id="ota-title">Memeriksa Pembaruan...</span>
+        <span class="ota-badge" id="ota-badge">Checking</span>
+      </div>
+      <div class="ota-desc" id="ota-desc">Menghubungi server untuk memeriksa versi terbaru.</div>
+      <div class="ota-notes" id="ota-notes" style="display:none"></div>
+      <div class="ota-progress-wrap" id="ota-progress-wrap">
+        <div class="ota-progress-bar" id="ota-progress-bar"></div>
+      </div>
+      <div class="ota-progress-label" id="ota-progress-label">0%</div>
+      <button class="btn-ota" id="btn-ota" style="display:none" onclick="startOtaUpdate()">⬇ Install Update</button>
+    </div>
+
+    <div class="divider"><span>Danger Zone</span></div>
+
+    <!-- Danger Zone -->
+    <div class="danger-zone">
+      <div class="danger-header">
+        <span class="danger-icon">⚠️</span>
+        <span class="danger-title">Factory Reset</span>
+      </div>
+      <p class="danger-desc">
+        Hapus semua konfigurasi WiFi dan FTP. Perangkat akan reboot dan masuk ke Setup Mode.
+      </p>
+      <form id="reset-form">
+        <input type="password" id="reset-pwd" placeholder="Masukkan password...." />
+        <button type="submit" class="btn-reset" id="reset-btn">🗑 Reset ke Factory Settings</button>
+      </form>
+      <div class="notification" id="notif-reset"></div>
+    </div>
+
+    <div class="powered-by">MedLink Dongle &bull; by Elitech</div>
+  </div>
+
+  <script>
+    const TOTAL_SECONDS = 120; // 2 minutes default
+    let remainingSeconds = TOTAL_SECONDS;
+    let countdownInterval = null;
+    let otaFirmwareUrl = '';
+    let otaPollInterval = null;
+    let otaRunning = false;
+
+    /* ─── Pause/Resume countdown saat OTA berjalan ─── */
+    function pauseCountdown() {
+      if (otaRunning) return;
+      otaRunning = true;
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+      // Tampilkan status khusus di timer
+      const el  = document.getElementById('countdown');
+      const bar = document.getElementById('btn-extend');
+      el.textContent = '⏸ OTA';
+      el.className = 'offline';
+      bar.disabled = true;
+      bar.textContent = '⏱ OTA Berjalan...';
+    }
+
+    function resumeCountdown() {
+      if (!otaRunning) return;
+      otaRunning = false;
+      // Sync dari server dulu sebelum lanjut countdown
+      fetchApStatus().then(() => {
+        if (countdownInterval) clearInterval(countdownInterval);
+        countdownInterval = setInterval(() => {
+          if (remainingSeconds > 0) {
+            remainingSeconds--;
+            updateDisplay();
+          } else {
+            clearInterval(countdownInterval);
+          }
+        }, 1000);
+      });
+    }
+
+    function formatTime(sec) {
+      if (sec <= 0) return 'Offline';
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return `${m}:${s < 10 ? '0' : ''}${s}`;
+    }
+
+    function updateDisplay() {
+      const el = document.getElementById('countdown');
+      const bar = document.getElementById('progress-bar');
+      const btn = document.getElementById('btn-extend');
+      const card = document.getElementById('ap-timer-card');
+
+      if (remainingSeconds <= 0) {
+        el.textContent = 'Offline';
+        el.className = 'offline';
+        bar.style.width = '0%';
+        btn.disabled = true;
+        btn.textContent = '⏱ AP Mode Mati';
+        card.style.background = 'linear-gradient(135deg, #f9fafb, #f3f4f6)';
+        card.style.borderColor = '#e5e7eb';
+      } else {
+        el.textContent = formatTime(remainingSeconds);
+        el.className = remainingSeconds <= 60 ? 'warning' : '';
+        bar.style.width = Math.min(100, (remainingSeconds / TOTAL_SECONDS) * 100) + '%';
+        btn.disabled = false;
+      }
+    }
+
+    function fetchApStatus() {
+      fetch('/ap_status')
+        .then(r => r.json())
+        .then(data => {
+          remainingSeconds = data.remaining_seconds || 0;
+          updateDisplay();
+          if (data.ssid) {
+            document.getElementById('info-ssid').textContent = data.ssid;
+            document.getElementById('info-grid').style.display = 'grid';
+          }
+          if (data.ip) {
+            document.getElementById('info-ip').textContent = data.ip;
+          }
+        })
+        .catch(() => {});
+    }
+
+    function extendApTime() {
+      fetch('/ap_extend', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+          if (data.status === 'success') {
+            remainingSeconds += 60;
+            updateDisplay();
+          }
+        })
+        .catch(() => {
+          remainingSeconds += 60;
+          updateDisplay();
+        });
+    }
+
+    /* ─── OTA Update Functions ─── */
+    function fetchOtaCheck() {
+      const card  = document.getElementById('ota-card');
+      const title = document.getElementById('ota-title');
+      const desc  = document.getElementById('ota-desc');
+      const badge = document.getElementById('ota-badge');
+      const icon  = document.getElementById('ota-icon');
+      const notes = document.getElementById('ota-notes');
+      const btn   = document.getElementById('btn-ota');
+
+      fetch('/ota/check')
+        .then(r => r.json())
+        .then(data => {
+          if (data.error) {
+            card.className  = 'ota-card error';
+            icon.textContent = '❌';
+            title.textContent = 'Gagal Cek Pembaruan';
+            badge.textContent = 'Error';
+            badge.className = 'ota-badge';
+            desc.textContent = data.error;
+            return;
+          }
+
+          if (data.update_available) {
+            otaFirmwareUrl = data.firmware_url;
+            card.className  = 'ota-card has-update';
+            icon.textContent = '🔔';
+            title.textContent = `Update Tersedia: v${data.latest_version}`;
+            badge.textContent = 'Baru!';
+            badge.className = 'ota-badge new';
+            desc.textContent = `Versi saat ini: v${data.current_version} → v${data.latest_version}`;
+            if (data.release_notes) {
+              notes.textContent = '📋 ' + data.release_notes;
+              notes.style.display = 'block';
+            }
+            btn.style.display = 'block';
+          } else {
+            card.className  = 'ota-card';
+            icon.textContent = '✅';
+            title.textContent = 'Firmware Sudah Terbaru';
+            badge.textContent = `v${data.current_version}`;
+            badge.className = 'ota-badge';
+            desc.textContent = 'Tidak ada pembaruan yang tersedia saat ini.';
+          }
+        })
+        .catch(() => {
+          const card = document.getElementById('ota-card');
+          card.className = 'ota-card error';
+          document.getElementById('ota-icon').textContent = '⚠️';
+          document.getElementById('ota-title').textContent = 'Server Tidak Terjangkau';
+          document.getElementById('ota-badge').textContent = 'Offline';
+          document.getElementById('ota-desc').textContent = 'Pastikan dongle terhubung ke internet untuk memeriksa pembaruan.';
+        });
+    }
+
+    function startOtaUpdate() {
+      if (!otaFirmwareUrl) return;
+      const card  = document.getElementById('ota-card');
+      const btn   = document.getElementById('btn-ota');
+      const wrap  = document.getElementById('ota-progress-wrap');
+      const label = document.getElementById('ota-progress-label');
+      const title = document.getElementById('ota-title');
+      const badge = document.getElementById('ota-badge');
+
+      btn.disabled = true;
+      btn.textContent = '⬇ Mengunduh...';
+      card.className = 'ota-card downloading';
+      wrap.style.display = 'block';
+      label.style.display = 'block';
+      title.textContent = 'Mengunduh Firmware...';
+      badge.textContent = 'Downloading';
+      badge.className = 'ota-badge downloading';
+
+      // ── Pause countdown di browser saat OTA dimulai ──
+      pauseCountdown();
+
+      fetch('/ota/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firmware_url: otaFirmwareUrl })
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data.status === 'started' || data.status === 'already_running') {
+            // Mulai polling progress
+            otaPollInterval = setInterval(pollOtaProgress, 1500);
+          } else {
+            document.getElementById('ota-title').textContent = 'Gagal Memulai Update';
+            card.className = 'ota-card error';
+            btn.disabled = false;
+            btn.textContent = '⬇ Coba Lagi';
+            resumeCountdown(); // Gagal start — lanjutkan countdown
+          }
+        })
+        .catch(() => {
+          card.className = 'ota-card error';
+          btn.disabled = false;
+          btn.textContent = '⬇ Coba Lagi';
+          resumeCountdown(); // Gagal start — lanjutkan countdown
+        });
+    }
+
+    function pollOtaProgress() {
+      fetch('/ota/progress')
+        .then(r => r.json())
+        .then(data => {
+          const bar   = document.getElementById('ota-progress-bar');
+          const label = document.getElementById('ota-progress-label');
+          const title = document.getElementById('ota-title');
+          const card  = document.getElementById('ota-card');
+
+          bar.style.width   = data.progress + '%';
+          label.textContent = data.progress + '%';
+
+          if (data.state === 'success') {
+            clearInterval(otaPollInterval);
+            bar.style.width = '100%';
+            label.textContent = '100% — Reboot otomatis...';
+            title.textContent = '✅ Update Berhasil! Rebooting...';
+            document.getElementById('btn-ota').style.display = 'none';
+            // Countdown tidak perlu dilanjutkan — device akan reboot
+          } else if (data.state === 'failed') {
+            clearInterval(otaPollInterval);
+            card.className = 'ota-card error';
+            title.textContent = '❌ Update Gagal: ' + (data.error || 'Unknown error');
+            const btn = document.getElementById('btn-ota');
+            btn.disabled = false;
+            btn.textContent = '⬇ Coba Lagi';
+            // ── Lanjutkan countdown setelah OTA gagal ──
+            resumeCountdown();
+          }
+        })
+        .catch(() => {});
+    }
+
+    // ─── Inisialisasi saat halaman dimuat ───
+    Promise.all([
+      fetchApStatus(),
+      fetchOtaCheck()
+    ]);
+
+    // Countdown tick
+    countdownInterval = setInterval(() => {
+      if (remainingSeconds > 0) {
+        remainingSeconds--;
+        updateDisplay();
+      } else {
+        clearInterval(countdownInterval);
+      }
+    }, 1000);
+
+    // Sync dengan server setiap 30 detik
+    setInterval(fetchApStatus, 30000);
+
+    // Factory Reset
+    document.getElementById('reset-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      const pwd = document.getElementById('reset-pwd').value;
+      const btn = document.getElementById('reset-btn');
+      const notif = document.getElementById('notif-reset');
+
+      btn.disabled = true;
+      btn.textContent = 'Mereset...';
+      notif.className = 'notification';
+
+      fetch('/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'password=' + encodeURIComponent(pwd)
+      })
+        .then(res => {
+          if (res.ok) {
+            notif.textContent = '✅ Reset berhasil. Perangkat sedang reboot...';
+            notif.className = 'notification success';
+            setTimeout(() => window.location.reload(), 4000);
+          } else {
+            notif.textContent = '❌ Password salah atau reset gagal.';
+            notif.className = 'notification error';
+            btn.disabled = false;
+            btn.textContent = '🗑 Reset ke Factory Settings';
+          }
+        })
+        .catch(() => {
+          notif.textContent = '❌ Tidak dapat terhubung ke perangkat.';
+          notif.className = 'notification error';
+          btn.disabled = false;
+          btn.textContent = '🗑 Reset ke Factory Settings';
+        });
+    });
+  </script>
+</body>
+
+</html>
