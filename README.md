@@ -36,10 +36,10 @@ Berikut adalah visualisasi apa yang terjadi antara Perawat (User), Mesin EKG, da
     |                          |                                 | (LED: Putih Solid)          |
     |                          |   (Penulisan byte terakhir)     |                             |
     |                          |-- 3. Mesin Berhenti Menulis --->|                             |
-    |                          |                                 | (Safeguard 5 Detik mulai)   |
+    |                          |                                 | (Safeguard 1 Detik mulai)   |
     |                          |                                 | (LED: Biru Kedip Lambat)    |
     |                          |                                 |                             |
-    |                          |   (Jika hening 5 detik tuntas)  |                             |
+    |                          |   (Jika hening 1 detik tuntas)  |                             |
     |                          |                                 |-- 4. Ambil alih akses USB   |
     |                          |                                 |-- 5. Upload via FTP (Port 21)-->
     |                          |                                 | (LED: Biru Kedip Cepat)     |
@@ -189,4 +189,4 @@ Jika sistem mendeteksi aktivitas tulis (Idle Trigger) namun ternyata tidak ada f
 Untuk mendeteksi kapan mesin EKG selesai menulis data tanpa bergantung pada *cache* sistem operasi, sistem menggunakan teknik *linker wrapping*:
 - Fungsi driver asli `sdmmc_write_sectors` dibungkus menjadi `__wrap_sdmmc_write_sectors`.
 - Setiap instruksi tulis fisik akan memperbarui `g_last_sd_activity_ms`.
-- Hal ini memastikan masa tenang 5 detik benar-benar dihitung dari byte terakhir yang ditulis ke disk fisik.
+- Hal ini memastikan masa tenang 1 detik benar-benar dihitung dari byte terakhir yang ditulis ke disk fisik.
