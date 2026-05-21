@@ -76,28 +76,43 @@ static int _compare_versions(const char *a, const char *b)
 static void _ota_update_task(void *pvParameter)
 {
     const char *url = (const char *)pvParameter;
-    s_state    = OTA_STATE_DOWNLOADING;
+    /* State sudah di-set ke DOWNLOADING oleh ota_manager_start_update() sebelum
+     * task ini dibuat — tidak perlu di-set lagi di sini agar ap_timeout_task
+     * langsung melihat state yang benar tanpa race condition. */
     s_progress = 0;
 
     ESP_LOGI(TAG, "Memulai OTA download dari: %s", url);
 
+    /* ── Tunggu sebentar agar WiFi/DNS stack fully ready setelah handoff ── */
+    vTaskDelay(pdMS_TO_TICKS(500));
+
     esp_http_client_config_t http_cfg = {
-        .url              = url,
-        .timeout_ms       = 30000,
+        .url               = url,
+        .timeout_ms        = 60000, /* Perbesar timeout: firmware bisa > 1MB */
         .keep_alive_enable = true,
-        .buffer_size      = 4096, /* WAJIB BESAR UNTUK GITHUB (Header Panjang) */
-        .buffer_size_tx   = 1024,
-        .crt_bundle_attach = esp_crt_bundle_attach, /* Gunakan global certificate bundle untuk verifikasi aman */
+        .buffer_size       = 4096,
+        .buffer_size_tx    = 1024,
+        .crt_bundle_attach = esp_crt_bundle_attach,
     };
 
     esp_https_ota_config_t ota_cfg = {
         .http_config = &http_cfg,
     };
 
+    /* ── Retry logic: coba hingga 3x jika koneksi gagal (DNS transient error) ── */
     esp_https_ota_handle_t ota_handle = NULL;
-    esp_err_t err = esp_https_ota_begin(&ota_cfg, &ota_handle);
+    esp_err_t err = ESP_FAIL;
+    for (int attempt = 1; attempt <= 3; attempt++) {
+        err = esp_https_ota_begin(&ota_cfg, &ota_handle);
+        if (err == ESP_OK) break;
+        ESP_LOGW(TAG, "OTA begin gagal (percobaan %d/3): %s — tunggu 3 detik...",
+                 attempt, esp_err_to_name(err));
+        if (attempt < 3) vTaskDelay(pdMS_TO_TICKS(3000));
+    }
+
     if (err != ESP_OK) {
-        snprintf(s_error_msg, sizeof(s_error_msg), "OTA begin gagal: %s", esp_err_to_name(err));
+        snprintf(s_error_msg, sizeof(s_error_msg), "OTA begin gagal setelah 3x percobaan: %s",
+                 esp_err_to_name(err));
         ESP_LOGE(TAG, "%s", s_error_msg);
         s_state = OTA_STATE_FAILED;
         vTaskDelete(NULL);
@@ -111,14 +126,25 @@ static void _ota_update_task(void *pvParameter)
                  new_app_desc.project_name, new_app_desc.version);
     }
 
-    /* Loop download dan flash dengan progress tracking sederhana */
+    /* Ambil total ukuran file dari HTTP Content-Length (jika didukung server) */
+    int total_size = esp_https_ota_get_image_size(ota_handle);
+    
+    /* Loop download dan flash dengan progress tracking */
     int bytes_written = 0;
     while (1) {
         err = esp_https_ota_perform(ota_handle);
         if (err == ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
             bytes_written = esp_https_ota_get_image_len_read(ota_handle);
-            /* Estimasi progress: cap 99% hingga selesai */
-            int estimated = bytes_written / 30000; /* ~1% per 30KB */
+            
+            int estimated = 0;
+            if (total_size > 0) {
+                /* Hitung persentase berdasarkan ukuran file asli */
+                estimated = (bytes_written * 100) / total_size;
+            } else {
+                /* Fallback jika server tidak mengirim Content-Length */
+                estimated = bytes_written / 30000; /* ~1% per 30KB */
+            }
+            
             s_progress = (estimated > 99) ? 99 : estimated;
             continue;
         }
@@ -183,6 +209,10 @@ esp_err_t ota_manager_check(ota_check_result_t *result)
         return ESP_ERR_NO_MEM;
     }
 
+    /* ── Supabase membutuhkan dua header untuk autentikasi anon ── */
+    esp_http_client_set_header(client, "apikey",        SUPABASE_ANON_KEY);
+    esp_http_client_set_header(client, "Authorization", "Bearer " SUPABASE_ANON_KEY);
+
     esp_err_t err = esp_http_client_perform(client);
     int status    = esp_http_client_get_status_code(client);
     esp_http_client_cleanup(client);
@@ -200,17 +230,28 @@ esp_err_t ota_manager_check(ota_check_result_t *result)
     /* Parse JSON */
     cJSON *root = cJSON_Parse(s_http_buf);
     if (!root) {
-        ESP_LOGE(TAG, "Gagal parse version.json");
+        ESP_LOGE(TAG, "Gagal parse REST API response");
         s_state = OTA_STATE_IDLE;
         return ESP_FAIL;
     }
 
-    cJSON *j_version = cJSON_GetObjectItem(root, "version");
-    cJSON *j_url     = cJSON_GetObjectItem(root, "firmware_url");
-    cJSON *j_notes   = cJSON_GetObjectItem(root, "release_notes");
+    /* Supabase REST API (PostgREST) mengembalikan Array JSON, ambil elemen pertama */
+    cJSON *row = cJSON_IsArray(root) ? cJSON_GetArrayItem(root, 0) : root;
+    if (!row) {
+        ESP_LOGI(TAG, "Tidak ada pembaruan firmware aktif di Supabase.");
+        cJSON_Delete(root);
+        s_state = OTA_STATE_IDLE;
+        /* Kembalikan OK tapi update_available = false */
+        result->update_available = false;
+        return ESP_OK;
+    }
+
+    cJSON *j_version = cJSON_GetObjectItem(row, "version");
+    cJSON *j_url     = cJSON_GetObjectItem(row, "firmware_url");
+    cJSON *j_notes   = cJSON_GetObjectItem(row, "release_notes");
 
     if (!cJSON_IsString(j_version) || !cJSON_IsString(j_url)) {
-        ESP_LOGE(TAG, "version.json format tidak valid (butuh 'version' dan 'firmware_url')");
+        ESP_LOGE(TAG, "Format data Supabase tidak valid (butuh 'version' dan 'firmware_url')");
         cJSON_Delete(root);
         s_state = OTA_STATE_IDLE;
         return ESP_FAIL;
@@ -244,13 +285,21 @@ esp_err_t ota_manager_start_update(const char *firmware_url)
 
     /* Simpan URL ke buffer statis agar task bisa akses */
     strncpy(s_pending_url, firmware_url, sizeof(s_pending_url) - 1);
+    s_pending_url[sizeof(s_pending_url) - 1] = '\0';
     s_progress = 0;
     s_error_msg[0] = '\0';
+
+    /* ── Set state SEBELUM membuat task ──────────────────────────────────────
+     * Ini KRITIS: ap_timeout_task cek state setiap detik. Jika state masih
+     * IDLE saat task baru dibuat, ada race condition di mana ap_timeout_task
+     * bisa mematikan AP/WiFi sebelum _ota_update_task sempat jalan.
+     * ─────────────────────────────────────────────────────────────────────── */
+    s_state = OTA_STATE_DOWNLOADING;
 
     BaseType_t ret = xTaskCreate(
         _ota_update_task,
         "ota_task",
-        8192,
+        16384, /* Perbesar stack: HTTPS OTA + TLS butuh minimal 12KB */
         (void *)s_pending_url,
         5,
         NULL
@@ -258,6 +307,7 @@ esp_err_t ota_manager_start_update(const char *firmware_url)
 
     if (ret != pdPASS) {
         ESP_LOGE(TAG, "Gagal membuat ota_task");
+        s_state = OTA_STATE_FAILED; /* Reset state jika task gagal dibuat */
         return ESP_FAIL;
     }
 

@@ -15,8 +15,8 @@ Fitur OTA memungkinkan firmware ECG Dongle diperbarui **tanpa kabel USB** — cu
         │
         ▼
   1. idf.py build                        ← Kompilasi firmware baru
-  2. Upload firmware.bin ke GitHub/Server
-  3. Update version.json di server       ← Naikkan nomor versi
+  2. Upload firmware.bin ke Supabase Storage
+  3. Insert tabel firmware_updates       ← Naikkan nomor versi
 
         │
         ▼
@@ -30,7 +30,7 @@ Fitur OTA memungkinkan firmware ECG Dongle diperbarui **tanpa kabel USB** — cu
   5. Dashboard otomatis memanggil GET /ota/check
         │
         ▼
-  6. ESP32 fetch version.json dari server lewat HTTPS
+  6. ESP32 fetch update terbaru dari REST API Supabase lewat HTTPS
         │
         ├─── Gagal (No Internet / Server Error)
         │         → Dashboard tampilkan "Server Tidak Terjangkau"
@@ -127,7 +127,7 @@ Dipanggil otomatis oleh dashboard saat halaman dimuat.
   "current_version": "1.0.0",
   "latest_version": "1.1.0",
   "update_available": true,
-  "firmware_url": "https://github.com/.../firmware_v1.1.0.bin",
+  "firmware_url": "https://<PROJECT>.supabase.co/storage/v1/object/public/MedlinkDongle/MedLinkDongle.bin",
   "release_notes": "Perbaikan Auto-Reconnect WiFi dan error FTP"
 }
 ```
@@ -161,7 +161,7 @@ Dipanggil saat user klik tombol "Install Update".
 **Request body (JSON):**
 ```json
 {
-  "firmware_url": "https://github.com/.../firmware_v1.1.0.bin"
+  "firmware_url": "https://<PROJECT>.supabase.co/storage/v1/object/public/MedlinkDongle/MedLinkDongle.bin"
 }
 ```
 
@@ -188,19 +188,48 @@ Di-poll oleh dashboard setiap 1.5 detik selama proses download berlangsung.
 
 ---
 
-## Format `version.json` (Server)
+## Setup Supabase (Satu Kali)
 
-File ini ditempatkan di server/GitHub dan menjadi sumber kebenaran versi:
+Sebagai pengganti file statis di GitHub, sistem OTA menggunakan **Supabase** (PostgreSQL REST API + Storage) agar lebih aman dan terstruktur.
 
-```json
-{
-  "version": "1.1.0",
-  "firmware_url": "https://raw.githubusercontent.com/OWNER/REPO/main/firmware.bin",
-  "release_notes": "Perbaikan koneksi FTP, tambah indikator LED offline, dan OTA Update."
-}
+### 1. Buat Tabel `firmware_updates` di SQL Editor
+```sql
+CREATE TABLE firmware_updates (
+  id            BIGSERIAL PRIMARY KEY,
+  version       TEXT      NOT NULL,
+  firmware_url  TEXT      NOT NULL,
+  release_notes TEXT      DEFAULT '',
+  is_active     BOOLEAN   NOT NULL DEFAULT true,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX ON firmware_updates (is_active, created_at DESC);
 ```
 
-> File template tersedia di: `releases/version.json`
+### 2. Aktifkan Keamanan (Row Level Security)
+```sql
+ALTER TABLE firmware_updates ENABLE ROW LEVEL SECURITY;
+
+-- Izinkan akses publik (anon) HANYA untuk membaca firmware yang aktif
+CREATE POLICY "Anon can read active firmware"
+  ON firmware_updates
+  FOR SELECT
+  TO anon
+  USING (is_active = true);
+```
+
+### 3. Buat Public Storage Bucket
+Di dashboard Supabase, buat bucket bernama `MedlinkDongle` dengan tipe **Public**.
+
+**Struktur Bucket (Kerangka Direktori):**
+```text
+MedlinkDongle/ (Bucket Name)
+│
+├── MedLinkDongle.bin       ← File firmware terbaru (di-overwrite setiap rilis baru)
+└── (Opsional: Anda bisa menyimpan history versi lama dengan nama berbeda jika diperlukan)
+```
+
+> **Tips:** Praktik termudah adalah selalu menamai file binary rilis dengan nama yang persis sama (misal: `MedLinkDongle.bin`), lalu menimpa (overwrite) file tersebut di bucket setiap rilis. Dengan cara ini, Anda bisa menggunakan URL `firmware_url` yang sama terus-menerus di database; Anda cukup memperbarui nomor `version`-nya saja.
 
 ---
 
@@ -208,57 +237,47 @@ File ini ditempatkan di server/GitHub dan menjadi sumber kebenaran versi:
 
 ### 1. Update Nomor Versi di Kode (Penting!)
 > **⚠️ PENGINGAT DEVELOPER:**
-> Proses OTA Update **TIDAK mengubah teks source code** di laptop Anda. File `ota_manager.h` adalah *Master Blueprint* lokal Anda. Anda **wajib mengubah angkanya secara manual** setiap kali mau membuat rilis versi baru.
+> Proses OTA Update **TIDAK mengubah teks source code** di laptop Anda. Anda **wajib mengubah angka versi** secara manual setiap kali merilis pembaruan.
 
 Edit file `components/ota_manager/ota_manager.h`:
 ```c
 // Sebelum:
-#define APP_VERSION "1.0.0"
+#define APP_VERSION "1.1.2"
 
 // Sesudah (Naikkan versinya):
-#define APP_VERSION "1.1.2"
+#define APP_VERSION "1.1.3"
 ```
 
 ### 2. Build Firmware Baru
-Jalankan kompilasi untuk membungkus kode terbaru Anda menjadi sebuah *binary* kue matang:
+Jalankan kompilasi untuk membungkus kode terbaru Anda menjadi binary:
 ```bash
 cd ECG-TransferData
 idf.py build
 ```
-File output: `build/FlashDriveTes.bin`
+File output: `build/FlashDriveTes.bin` (Atau `MedLinkDongle.bin` tergantung konfigurasi project).
 
-### 3. Upload ke GitHub (Cara Termudah)
+### 3. Upload ke Supabase Storage
+1. Buka Supabase Dashboard → **Storage** → Bucket `MedlinkDongle`
+2. Upload file `MedLinkDongle.bin` hasil build
+3. Klik **Get URL** pada file tersebut untuk menyalin public URL-nya.
+   (Contoh: `https://xxxxxx.supabase.co/storage/v1/object/public/MedlinkDongle/MedLinkDongle.bin`)
 
-**Opsi A — GitHub Releases (Rekomendasi Produksi):**
-Terdapat dua cara untuk membuat rilis menggunakan tag:
+### 4. Update Database Supabase
+Jalankan query ini di **SQL Editor** Supabase untuk memberitahu alat bahwa ada versi baru:
 
-*Cara 1: Lewat GitHub Web (Otomatis)*
-1. Di halaman GitHub > Releases > Draft New Release.
-2. Ketikkan versi baru di kolom **Choose a tag** (misal: `v1.1.0`), GitHub akan otomatis membuatkan tag.
+```sql
+-- 1. Nonaktifkan semua versi lama terlebih dahulu
+UPDATE firmware_updates SET is_active = false;
 
-*Cara 2: Lewat Terminal (Pilihan Klasik)*
-1. Buat dan push tag secara manual: `git tag v1.1.0 && git push origin v1.1.0`.
-2. Di halaman GitHub > Releases > Draft New Release > pilih tag `v1.1.0` yang sudah muncul.
-
-*Langkah Lanjutan (Untuk Cara 1 & 2):*
-3. Upload file `build/FlashDriveTes.bin` ke kotak aset.
-4. Publish rilis, lalu salin URL download langsungnya (format `https://github.com/OWNER/REPO/releases/download/v1.1.0/FlashDriveTes.bin`).
-
-**Opsi B — GitHub Raw File di folder releases/ (Untuk Testing Cepat):**
-1. Salin `build/FlashDriveTes.bin` ke folder lokal `releases/` dan ubah namanya menjadi `firmware.bin`.
-2. Commit dan push: `git add releases/firmware.bin && git commit -m "Update firmware v1.1.0" && git push`
-3. URL: `https://raw.githubusercontent.com/OWNER/REPO/BRANCH/releases/firmware.bin`
-
-### 4. Update `version.json` di Server
-Edit file `releases/version.json` yang sudah diupload sebelumnya:
-```json
-{
-  "version": "1.1.0",
-  "firmware_url": "https://github.com/rivaldisinkoprima/ECG-TransferData/releases/download/v1.1.0/FlashDriveTes.bin",
-  "release_notes": "Deskripsi singkat perubahan versi ini."
-}
+-- 2. Tambahkan versi terbaru
+INSERT INTO firmware_updates (version, firmware_url, release_notes, is_active)
+VALUES (
+  '1.1.3',
+  'https://YOUR_PROJECT_REF.supabase.co/storage/v1/object/public/MedlinkDongle/MedLinkDongle.bin',
+  'Perbaikan jeda EKG menjadi 1 detik',
+  true
+);
 ```
-Commit dan push perubahan ini.
 
 ### 5. Verifikasi
 1. Buka Dashboard Dongle (tekan tombol BOOT 3 detik atau saat reboot)
@@ -267,27 +286,14 @@ Commit dan push perubahan ini.
 
 ---
 
-## Konfigurasi URL Server (Sesuaikan di Kode)
-
-Edit file `components/ota_manager/ota_manager.h`:
-```c
-// Ganti dengan URL repositori GitHub Anda:
-#define OTA_VERSION_URL \
-    "https://raw.githubusercontent.com/OWNER/REPO/BRANCH/releases/version.json"
-```
-
----
-
 ## Keamanan
 
 | Aspek | Status | Keterangan |
 | :--- | :--- | :--- |
-| **HTTPS Transport** | ✅ Aktif | Semua transfer menggunakan TLS |
-| **Cert Verification** | ✅ Aktif | Menggunakan `esp_crt_bundle_attach` untuk memverifikasi sertifikat SSL GitHub melalui Root CA internal bawaan ESP-IDF |
-| **Rollback Protection** | ✅ Aktif | Firmware crash → rollback otomatis ke versi sebelumnya |
-| **Auth Token** | ❌ Belum ada | URL publik GitHub tidak memerlukan auth, private repo perlu header token |
-
-> **Untuk lingkungan produksi klinis yang lebih ketat**, pertimbangkan menggunakan server internal rumah sakit (tidak perlu akses internet publik) dengan sertifikat TLS yang valid.
+| **HTTPS Transport** | ✅ Aktif | Semua transfer menggunakan TLS (Port 443) |
+| **Cert Verification** | ✅ Aktif | Memverifikasi sertifikat SSL Supabase melalui Root CA internal bawaan ESP-IDF |
+| **Rollback Protection** | ✅ Aktif | Jika firmware crash → rollback otomatis ke partisi versi sebelumnya |
+| **Auth Cek Versi** | ✅ Aman | Menggunakan `anon key` dengan Row Level Security. Hacker tidak bisa merusak database. |
 
 ---
 
@@ -295,16 +301,13 @@ Edit file `components/ota_manager/ota_manager.h`:
 
 | Gejala | Kemungkinan Penyebab | Solusi |
 | :--- | :--- | :--- |
-| Dashboard tampilkan "Server Tidak Terjangkau" | Dongle tidak punya akses internet, hanya LAN lokal | Pastikan router memiliki koneksi internet aktif |
-| Progress bar mandek di 0% | URL firmware salah atau server lambat | Cek URL di `version.json`, coba akses dari browser PC |
-| OTA gagal dengan "OTA begin gagal" | Partisi belum di-flash dengan skema dual-OTA | Lakukan full flash ulang via USB: `idf.py flash` |
-| Setelah update, dongle rollback ke versi lama | `esp_ota_mark_app_valid_cancel_rollback()` tidak dipanggil | Pastikan fungsi tersebut ada di baris pertama `app_main()` |
-| Dongle tidak bisa download, timeout | Ukuran firmware >7.5MB atau koneksi lemah | Cek ukuran binary, perpanjang `timeout_ms` di `ota_manager.c` |
+| Dashboard tampilkan "Server Tidak Terjangkau" | Dongle tidak punya internet | Pastikan router terkoneksi ke internet |
+| Tampil "Firmware Sudah Terbaru" padahal ada update | Lupa mengubah `APP_VERSION` atau DB salah | Cek `APP_VERSION` di firmware vs versi di tabel Supabase |
+| OTA gagal dengan "Out of buffer" | Header server terlalu besar | Firmware saat ini sudah di-fix buffer ke 4096, pastikan sudah memakai versi terbaru |
+| Setelah update, dongle rollback ke versi lama | Bug di firmware baru yang menyebabkan crash | Firmware lama tetap aman. Periksa log lewat USB untuk debugging. |
 
 ---
 
 ## Catatan Penting
 
-> **Flash Ulang Pertama Kali Wajib**: Karena partisi tabel diubah dari `factory` (satu slot) menjadi `ota_0`/`ota_1` (dual slot), Anda **harus melakukan flash ulang via kabel USB satu kali** sebelum fitur OTA bisa digunakan. Perintah: `idf.py flash`
-
-> **Selama Proses Download**: Dongle tidak dapat menerima data dari mesin EKG. Proses download biasanya berlangsung **1–3 menit** tergantung kecepatan internet. Firmware lama tetap berjalan sepenuhnya selama download (download ke partisi kosong, bukan partisi aktif).
+> **Selama Proses Download**: Dongle tidak dapat menerima data dari mesin EKG. Proses download biasanya berlangsung **1–3 menit** tergantung kecepatan internet. Firmware lama tetap berjalan sepenuhnya (tidak terganggu) karena file baru diunduh ke partisi kosong, bukan partisi aktif.

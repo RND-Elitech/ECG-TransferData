@@ -4,14 +4,23 @@
 #include <stdbool.h>
 
 /* ─── Versi firmware saat ini ─── */
-#define APP_VERSION "1.1.2"
+#define APP_VERSION "1.0.4"
 
-/* ─── URL default untuk cek pembaruan ─── */
-/* Ganti dengan URL GitHub Releases atau server Anda */
+/* ─── Supabase Project Credentials ─── */
+/* Ganti dengan URL dan Anon Key dari Supabase Project Settings -> API Anda */
+#define SUPABASE_URL "https://mlnyobqoznqpocbpjnhl.supabase.co"
+#define SUPABASE_ANON_KEY                                                      \
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."                                      \
+  "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1sbnlvYnFvem5xcG9jYnBqbmhsIiwicm9sZSI6Im" \
+  "Fub24iLCJpYXQiOjE3NzkyNjMyNTgsImV4cCI6MjA5NDgzOTI1OH0."                     \
+  "f6j0Nkg4MyGL49v67hRmA952nOYZIBX1FT-z1E35fSg"
+
+/* ─── URL REST API untuk cek versi terbaru ─── */
 #define OTA_VERSION_URL                                                        \
-  "https://raw.githubusercontent.com/rivaldisinkoprima/ECG-TransferData/"      \
-  "inject-sn/releases/version.json"
-#define OTA_TIMEOUT_MS 15000 /* Timeout fetch version.json (15 detik) */
+  SUPABASE_URL                                                                 \
+  "/rest/v1/"                                                                  \
+  "firmware_updates?is_active=eq.true&order=created_at.desc&limit=1"
+#define OTA_TIMEOUT_MS 15000 /* Timeout fetch REST API (15 detik) */
 
 /* ─── Struktur hasil pengecekan versi ─── */
 typedef struct {
