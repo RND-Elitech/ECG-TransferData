@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 /* ─── Versi firmware saat ini ─── */
-#define APP_VERSION "1.0.5"
+#define APP_VERSION "1.0.6"
 
 /* ─── Supabase Project Credentials ─── */
 /* Ganti dengan URL dan Anon Key dari Supabase Project Settings -> API Anda */
@@ -20,7 +20,7 @@
   SUPABASE_URL                                                                 \
   "/rest/v1/"                                                                  \
   "firmware_updates?is_active=eq.true&order=created_at.desc&limit=1"
-#define OTA_TIMEOUT_MS 15000 /* Timeout fetch REST API (15 detik) */
+#define OTA_TIMEOUT_MS 30000 /* Timeout fetch REST API (30 detik) */
 
 /* ─── Struktur hasil pengecekan versi ─── */
 typedef struct {
