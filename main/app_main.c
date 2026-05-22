@@ -599,55 +599,8 @@ static void clean_storage_on_boot(void) {
     return;
   }
 
-  DIR *dir = opendir("/data");
-  if (!dir) {
-    ESP_LOGE("boot_clean", "Gagal membuka direktori /data");
-    return;
-  }
-
-  struct dirent *entry;
-  bool deleted_any = false;
-  while ((entry = readdir(dir)) != NULL) {
-    // Skip "." dan ".."
-    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-      continue;
-    }
-
-    char path[512];
-    snprintf(path, sizeof(path), "/data/%s", entry->d_name);
-
-    if (entry->d_type == DT_DIR) {
-      // Hanya bersihkan folder hasil record EKG (dimulai dengan "ecg_archive")
-      if (strncmp(entry->d_name, "ecg_archive", 11) == 0) {
-        DIR *subdir = opendir(path);
-        if (subdir) {
-          struct dirent *subentry;
-          while ((subentry = readdir(subdir)) != NULL) {
-            if (subentry->d_type == DT_REG) {
-              char filepath[768];
-              snprintf(filepath, sizeof(filepath), "%s/%s", path, subentry->d_name);
-              unlink(filepath);
-              deleted_any = true;
-            }
-          }
-          closedir(subdir);
-        }
-        rmdir(path);
-        deleted_any = true;
-      }
-    } else if (entry->d_type == DT_REG) {
-      // Hapus file reguler di root /data jika ada
-      unlink(path);
-      deleted_any = true;
-    }
-  }
-  closedir(dir);
-
-  if (deleted_any) {
-    ESP_LOGI("boot_clean", "Storage telah dibersihkan dari file sisa sebelumnya.");
-  } else {
-    ESP_LOGI("boot_clean", "Tidak ada sisa file lama, storage bersih.");
-  }
+  uploader_wipe_all_ecg_archives("/data");
+  ESP_LOGI("boot_clean", "Proses pembersihan selesai.");
 
   // Unmount dan expose kembali ke USB Host agar siap digunakan PC/Mesin EKG
   storage_manager_expose_to_usb();

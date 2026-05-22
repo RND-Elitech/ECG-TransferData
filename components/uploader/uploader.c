@@ -29,20 +29,40 @@ static bool _is_valid_ecg_file(const char *name)
 
 /* ─── Public API ─── */
 
-static void _force_delete_folder(const char *folder_path) {
-    DIR *d = opendir(folder_path);
-    if (!d) return;
+void uploader_wipe_all_ecg_archives(const char *base_path) {
+    DIR *dir = opendir(base_path);
+    if (!dir) return;
+
     struct dirent *entry;
-    while ((entry = readdir(d)) != NULL) {
-        if (entry->d_type == DT_REG) {
-            char file_path[768];
-            snprintf(file_path, sizeof(file_path), "%s/%s", folder_path, entry->d_name);
-            unlink(file_path);
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        
+        char path_buf[512];
+        snprintf(path_buf, sizeof(path_buf), "%s/%s", base_path, entry->d_name);
+        
+        if (entry->d_type == DT_DIR) {
+            if (strncmp(entry->d_name, "ecg_archive", 11) == 0) {
+                DIR *subdir = opendir(path_buf);
+                if (subdir) {
+                    struct dirent *subentry;
+                    while ((subentry = readdir(subdir)) != NULL) {
+                        if (subentry->d_type == DT_REG) {
+                            char file_path[768];
+                            snprintf(file_path, sizeof(file_path), "%s/%s", path_buf, subentry->d_name);
+                            unlink(file_path);
+                        }
+                    }
+                    closedir(subdir);
+                }
+                rmdir(path_buf);
+                ESP_LOGI(TAG, "Sapu bersih: Folder %s beserta isinya dihapus.", path_buf);
+            }
+        } else if (entry->d_type == DT_REG) {
+            unlink(path_buf);
+            ESP_LOGI(TAG, "Sapu bersih: File root %s dihapus.", path_buf);
         }
     }
-    closedir(d);
-    rmdir(folder_path);
-    ESP_LOGI("uploader", "Folder %s dan isinya dihapus agar bisa coba lagi.", folder_path);
+    closedir(dir);
 }
 
 void uploader_init(const uploader_config_t *cfg)
@@ -82,8 +102,8 @@ esp_err_t uploader_run(void)
 
         if (strcmp(entry->d_name, "ecg_archive") == 0) {
             if (max_index < 0) { strcpy(latest_folder, entry->d_name); max_index = 0; }
-        } else {
-            int idx = atoi(entry->d_name + 11);
+        } else if (strncmp(entry->d_name, "ecg_archive_", 12) == 0) {
+            int idx = atoi(entry->d_name + 12);
             if (idx > max_index) { max_index = idx; strcpy(latest_folder, entry->d_name); }
         }
     }
@@ -122,7 +142,7 @@ esp_err_t uploader_run(void)
     if (ftp->ftpClientConnect(s_cfg.ftp_host, s_cfg.ftp_port, &ftp_ctrl) != 1) {
         ESP_LOGE(TAG, "Koneksi FTP gagal (Mungkin Host kosong atau tidak terjangkau)");
         closedir(subdir);
-        _force_delete_folder(folder_path); // Hapus file yang tertahan
+        uploader_wipe_all_ecg_archives(s_cfg.base_path);
         if (needs_remount) storage_manager_expose_to_usb();
         return UPLOADER_ERR_FTP_CONN;
     }
@@ -132,7 +152,7 @@ esp_err_t uploader_run(void)
         ESP_LOGE(TAG, "Login FTP gagal untuk user: %s", s_cfg.ftp_user);
         ftp->ftpClientQuit(ftp_ctrl);
         closedir(subdir);
-        _force_delete_folder(folder_path); // Hapus file yang tertahan
+        uploader_wipe_all_ecg_archives(s_cfg.base_path);
         if (needs_remount) storage_manager_expose_to_usb();
         return UPLOADER_ERR_FTP_LOGIN;
     }
@@ -159,15 +179,15 @@ esp_err_t uploader_run(void)
     ftp->ftpClientQuit(ftp_ctrl);
 
     if (!found) {
-        ESP_LOGW(TAG, "Tidak ada file valid di %s, menghapus folder kosong.", folder_path);
-        rmdir(folder_path);
+        ESP_LOGW(TAG, "Tidak ada file valid di %s, menghapus semua folder ecg_archive yang kosong.", folder_path);
+        uploader_wipe_all_ecg_archives(s_cfg.base_path);
         if (needs_remount) storage_manager_expose_to_usb();
         return UPLOADER_ERR_NO_FILES;
     }
 
     if (success > 0 || fail > 0) {
-        ESP_LOGI(TAG, "Proses selesai. Sukses: %d, Gagal: %d. Folder %s akan dihapus.", success, fail, folder_path);
-        rmdir(folder_path);
+        ESP_LOGI(TAG, "Proses selesai. Sukses: %d, Gagal: %d. Menyapu bersih seluruh sisa folder.", success, fail);
+        uploader_wipe_all_ecg_archives(s_cfg.base_path);
     }
 
     if (needs_remount) {

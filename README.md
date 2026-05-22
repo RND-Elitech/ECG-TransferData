@@ -185,6 +185,11 @@ Sistem memiliki pola kedipan warna merah spesifik untuk memudahkan *troubleshoot
 ### 3. Deteksi File Kosong (Silent Fallback)
 Jika sistem mendeteksi aktivitas tulis (Idle Trigger) namun ternyata tidak ada file EKG valid yang ditemukan (misal hanya penulisan metadata sistem), uploader akan berhenti secara diam-diam (*Silent*) dan kembali ke mode Standby tanpa memicu indikator error Merah, guna menghindari kebingungan pengguna (*False Alarm*).
 
+### 4. Resolusi Folder & Pembersihan Total (Wipe All)
+Karena mesin EKG seringkali membuat banyak folder bercabang saat dongle dicabut-pasang sebelum sempat terkirim (contoh: `ecg_archive`, `ecg_archive_1`, `ecg_archive_X`), sistem memiliki dua lapis kecerdasan dalam pengunggahan:
+- **Auto-Select Latest Folder:** Modul uploader secara otomatis mencari folder dengan indeks angka `X` tertinggi (terbaru) dengan mem-parsing angkanya. Folder ini diprioritaskan karena merupakan riwayat rekam jantung terakhir pasien.
+- **Wipe All Sweep:** Setelah proses FTP usai (baik seluruh file berhasil diunggah maupun jika koneksi/login mengalami kegagalan), sistem akan mengeksekusi misi "Sapu Bersih". Seluruh direktori maupun file yang berawalan `ecg_archive` akan dimusnahkan. Ini memastikan bahwa perangkat `Flash Disk` akan dikembalikan dalam keadaan 100% kosong setiap saat untuk mencegah memori penuh.
+
 ### 3. Hardware Activity Intercept (Linker Wrap)
 Untuk mendeteksi kapan mesin EKG selesai menulis data tanpa bergantung pada *cache* sistem operasi, sistem menggunakan teknik *linker wrapping*:
 - Fungsi driver asli `sdmmc_write_sectors` dibungkus menjadi `__wrap_sdmmc_write_sectors`.

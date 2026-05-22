@@ -61,3 +61,11 @@ bool uploader_is_busy(void);
  * @return ESP_OK, UPLOADER_ERR_FTP_CONN, UPLOADER_ERR_FTP_LOGIN, atau UPLOADER_ERR_TRANSFER
  */
 esp_err_t uploader_get_last_status(void);
+
+/**
+ * @brief Menghapus semua folder ecg_archive dan file tunggal di direktori root storage.
+ * Digunakan untuk membersihkan sisa data secara menyeluruh.
+ *
+ * @param base_path Base path storage (contoh: "/data")
+ */
+void uploader_wipe_all_ecg_archives(const char *base_path);
