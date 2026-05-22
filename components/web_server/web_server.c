@@ -395,6 +395,23 @@ static esp_err_t handler_ota_check(httpd_req_t *req) {
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
+    /* Guard: jangan coba fetch ke internet jika WiFi tidak terkoneksi (Mode AP) */
+    if (!wifi_manager_is_connected()) {
+        cJSON *root = cJSON_CreateObject();
+        cJSON_AddStringToObject(root, "current_version", ota_manager_get_current_version());
+        cJSON_AddStringToObject(root, "latest_version",  "");
+        cJSON_AddBoolToObject  (root, "update_available", false);
+        cJSON_AddStringToObject(root, "firmware_url",    "");
+        cJSON_AddStringToObject(root, "release_notes",   "");
+        cJSON_AddStringToObject(root, "error",
+            "Perangkat tidak terhubung ke internet. Hubungkan ke WiFi terlebih dahulu untuk memeriksa pembaruan.");
+        char *json_str = cJSON_PrintUnformatted(root);
+        cJSON_Delete(root);
+        httpd_resp_sendstr(req, json_str ? json_str : "{}");
+        if (json_str) free(json_str);
+        return ESP_OK;
+    }
+
     esp_err_t err = ota_manager_check(&result);
 
     cJSON *root = cJSON_CreateObject();

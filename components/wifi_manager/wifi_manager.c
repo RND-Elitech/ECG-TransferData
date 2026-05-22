@@ -51,7 +51,23 @@ void wifi_manager_set_static_ip(const char *ip_addr, const char *gateway, const 
 }
 
 bool wifi_manager_is_connected(void) {
-    return s_is_connected;
+    if (!s_is_connected) {
+        return false;
+    }
+    
+    /* Validasi paling kuat: Pastikan STA netif punya IP Address valid */
+    if (s_sta_netif == NULL) return false;
+    
+    esp_netif_ip_info_t ip_info;
+    if (esp_netif_get_ip_info(s_sta_netif, &ip_info) != ESP_OK) {
+        return false;
+    }
+    
+    if (ip_info.ip.addr == 0) {
+        return false; /* 0.0.0.0 berarti belum terhubung / belum dapat DHCP */
+    }
+    
+    return true;
 }
 
 static void _init_wifi_if_needed(void) {
@@ -73,7 +89,35 @@ static void wifi_sta_event_handler(void *arg, esp_event_base_t event_base,
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_CONNECTED) {
         if (s_use_static_ip) {
-            ESP_LOGI(TAG, "Berhasil terkoneksi ke Access Point (Static IP digunakan)");
+            /* ── Set IP address setelah L2 terhubung (paling aman di sini) ── */
+            esp_netif_set_ip_info(s_sta_netif, &s_static_ip_info);
+
+            /* ── Set DNS manual: type=0 = IPADDR_TYPE_V4 (lwIP default) ── */
+            esp_netif_dns_info_t dns_info;
+            esp_err_t dns_err;
+            memset(&dns_info, 0, sizeof(dns_info));
+            dns_info.ip.type = 0; /* IPADDR_TYPE_V4 = 0 di lwIP */
+
+            /* DNS 1 (Main): Google DNS (Paling diandalkan) */
+            dns_info.ip.u_addr.ip4.addr = esp_ip4addr_aton("8.8.8.8");
+            dns_err = esp_netif_set_dns_info(s_sta_netif, ESP_NETIF_DNS_MAIN, &dns_info);
+            if (dns_err == ESP_OK) ESP_LOGI(TAG, "DNS 1 (MAIN) berhasil diset ke 8.8.8.8");
+            else ESP_LOGE(TAG, "Gagal set DNS 1: %s", esp_err_to_name(dns_err));
+
+            /* DNS 2 (Backup): Cloudflare DNS */
+            dns_info.ip.u_addr.ip4.addr = esp_ip4addr_aton("1.1.1.1");
+            dns_err = esp_netif_set_dns_info(s_sta_netif, ESP_NETIF_DNS_BACKUP, &dns_info);
+            if (dns_err == ESP_OK) ESP_LOGI(TAG, "DNS 2 (BACKUP) berhasil diset ke 1.1.1.1");
+
+            /* DNS 3 (Fallback): Gateway user (jika 8.8.8.8 diblokir ISP) */
+            if (s_static_ip_info.gw.addr != 0) {
+                dns_info.ip.u_addr.ip4.addr = s_static_ip_info.gw.addr;
+                esp_netif_set_dns_info(s_sta_netif, ESP_NETIF_DNS_FALLBACK, &dns_info);
+            }
+
+            ESP_LOGI(TAG, "Static IP diterapkan: IP=" IPSTR " GW=" IPSTR,
+                     IP2STR(&s_static_ip_info.ip), IP2STR(&s_static_ip_info.gw));
+
             s_is_connected = true;
             s_retry_num = 0;
             s_auto_reconnect = true;
@@ -127,11 +171,14 @@ esp_err_t wifi_manager_start(const char *ssid, const char *password,
 
     _init_wifi_if_needed();
 
-    /* Terapkan mode IP sebelum mulai terkoneksi */
+    /* Konfigurasi mode IP:
+     * - Static IP: Stop DHCP sebelum WiFi start. IP + DNS akan diset di
+     *   WIFI_EVENT_STA_CONNECTED handler (setelah L2 terhubung) agar tidak
+     *   di-reset oleh lwIP saat interface naik.
+     * - Dynamic: Pastikan DHCP client berjalan. */
     if (s_use_static_ip) {
         esp_netif_dhcpc_stop(s_sta_netif);
-        esp_netif_set_ip_info(s_sta_netif, &s_static_ip_info);
-        ESP_LOGI(TAG, "Terapkan Static IP ke netif_sta");
+        ESP_LOGI(TAG, "DHCP dinonaktifkan — Static IP akan diterapkan setelah WiFi terhubung");
     } else {
         esp_netif_dhcpc_start(s_sta_netif);
         ESP_LOGI(TAG, "Terapkan DHCP ke netif_sta");
@@ -204,9 +251,11 @@ esp_err_t wifi_manager_start(const char *ssid, const char *password,
         return ESP_OK;
     } else if (bits & WIFI_FAIL_BIT) {
         ESP_LOGE(TAG, "Gagal terhubung ke WiFi: '%s'", ssid);
+        esp_wifi_disconnect(); /* Abort koneksi yang menggantung */
         return ESP_ERR_WIFI_CONN;
     } else {
         ESP_LOGE(TAG, "Timeout koneksi WiFi setelah %lu ms", (unsigned long)timeout_ms);
+        esp_wifi_disconnect(); /* Abort koneksi yang menggantung */
         return ESP_ERR_TIMEOUT;
     }
 }
