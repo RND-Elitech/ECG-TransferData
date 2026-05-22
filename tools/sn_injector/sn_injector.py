@@ -261,7 +261,7 @@ class SNInjectorApp(tk.Tk):
     # ── Aksi: Klik tombol injeksi ─────────────────────────
     def _on_inject_click(self):
         port = self._port_var.get().strip()
-        sn   = self._sn_var.get().strip().upper()
+        sn   = self._sn_var.get().strip()
 
         if not port:
             messagebox.showerror("Pilih Port", "Silakan pilih port COM terlebih dahulu.")
