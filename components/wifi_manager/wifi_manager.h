@@ -22,6 +22,16 @@ bool wifi_manager_is_connected(void);
 esp_err_t wifi_manager_start(const char *ssid, const char *password, uint32_t timeout_ms);
 
 /**
+ * @brief Set konfigurasi Static IP sebelum memulai koneksi Wi-Fi.
+ *        Jika ip_addr di-set NULL atau kosong, maka akan kembali menggunakan DHCP (Dynamic IP).
+ * 
+ * @param ip_addr  IP Address statis (contoh: "192.168.1.100")
+ * @param gateway  Gateway IP (contoh: "192.168.1.1")
+ * @param netmask  Subnet mask (contoh: "255.255.255.0")
+ */
+void wifi_manager_set_static_ip(const char *ip_addr, const char *gateway, const char *netmask);
+
+/**
  * @brief Aktifkan ESP32 sebagai Access Point (AP mode).
  *
  * SSID: "ECG-Gateway-XXXX" (XXXX = 4 digit hex dari MAC address)

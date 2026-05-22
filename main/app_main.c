@@ -427,6 +427,11 @@ static const char *TAG = "app_main";
 /* ─── Variabel Global Konfigurasi ─── */
 static char s_wifi_ssid[64];
 static char s_wifi_pass[64];
+static char s_ip_mode[16];
+static char s_ip_addr[20];
+static char s_ip_subnet[20];
+static char s_ip_gw[20];
+
 static char s_ftp_host[64];
 static int32_t s_ftp_port;
 static char s_ftp_user[64];
@@ -465,6 +470,11 @@ static bool load_config_from_nvs(void) {
 
     get_nvs_str(nvs_handle, "wifi_ssid", s_wifi_ssid, sizeof(s_wifi_ssid), "");
     get_nvs_str(nvs_handle, "wifi_pass", s_wifi_pass, sizeof(s_wifi_pass), "");
+    get_nvs_str(nvs_handle, "ip_mode", s_ip_mode, sizeof(s_ip_mode), "dynamic");
+    get_nvs_str(nvs_handle, "ip_addr", s_ip_addr, sizeof(s_ip_addr), "");
+    get_nvs_str(nvs_handle, "ip_subnet", s_ip_subnet, sizeof(s_ip_subnet), "");
+    get_nvs_str(nvs_handle, "ip_gw", s_ip_gw, sizeof(s_ip_gw), "");
+
     get_nvs_str(nvs_handle, "ftp_host", s_ftp_host, sizeof(s_ftp_host), "");
     s_ftp_port = get_nvs_i32(nvs_handle, "ftp_port", 0);
     get_nvs_str(nvs_handle, "ftp_user", s_ftp_user, sizeof(s_ftp_user), "");
@@ -474,6 +484,11 @@ static bool load_config_from_nvs(void) {
     ESP_LOGW(TAG, "NVS 'config' tidak ditemukan — menggunakan nilai default.");
     s_wifi_ssid[0] = '\0';
     s_wifi_pass[0] = '\0';
+    strncpy(s_ip_mode, "dynamic", sizeof(s_ip_mode) - 1);
+    s_ip_addr[0] = '\0';
+    s_ip_subnet[0] = '\0';
+    s_ip_gw[0] = '\0';
+    
     s_ftp_host[0] = '\0';
     s_ftp_port = 0;
     s_ftp_user[0] = '\0';
@@ -686,6 +701,14 @@ void app_main(void) {
   /* 2. Coba koneksi WiFi (timeout 30 detik) */
   ESP_LOGI(TAG, "Menghubungkan ke WiFi SSID: '%s' ...", s_wifi_ssid);
   s_led_state = LED_WIFI_CONNECTING;
+  
+  /* Cek apakah menggunakan Static IP */
+  if (strcmp(s_ip_mode, "static") == 0 && strlen(s_ip_addr) > 0) {
+      wifi_manager_set_static_ip(s_ip_addr, s_ip_gw, s_ip_subnet);
+  } else {
+      wifi_manager_set_static_ip(NULL, NULL, NULL);
+  }
+
   ret = wifi_manager_start(s_wifi_ssid, s_wifi_pass, 30000);
 
   if (ret != ESP_OK) {

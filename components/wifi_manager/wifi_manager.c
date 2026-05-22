@@ -27,6 +27,29 @@ static int s_retry_num = 0;
 #define MAX_WIFI_RETRY 3
 static volatile bool s_auto_reconnect = false;
 
+static bool s_use_static_ip = false;
+static esp_netif_ip_info_t s_static_ip_info;
+
+void wifi_manager_set_static_ip(const char *ip_addr, const char *gateway, const char *netmask) {
+    if (ip_addr && strlen(ip_addr) > 0 && strcmp(ip_addr, "0.0.0.0") != 0 && strcmp(ip_addr, "dynamic") != 0) {
+        s_use_static_ip = true;
+        memset(&s_static_ip_info, 0, sizeof(s_static_ip_info));
+        
+        /* Parsing string ke format IP internal ESP-IDF */
+        s_static_ip_info.ip.addr = esp_ip4addr_aton(ip_addr);
+        if (gateway && strlen(gateway) > 0) {
+            s_static_ip_info.gw.addr = esp_ip4addr_aton(gateway);
+        }
+        if (netmask && strlen(netmask) > 0) {
+            s_static_ip_info.netmask.addr = esp_ip4addr_aton(netmask);
+        }
+        ESP_LOGI(TAG, "Mode Static IP diset: IP=%s, GW=%s, Mask=%s", ip_addr, gateway ? gateway : "", netmask ? netmask : "");
+    } else {
+        s_use_static_ip = false;
+        ESP_LOGI(TAG, "Mode DHCP (Dynamic IP) diset.");
+    }
+}
+
 bool wifi_manager_is_connected(void) {
     return s_is_connected;
 }
@@ -48,6 +71,16 @@ static void wifi_sta_event_handler(void *arg, esp_event_base_t event_base,
                                    int32_t event_id, void *event_data) {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_CONNECTED) {
+        if (s_use_static_ip) {
+            ESP_LOGI(TAG, "Berhasil terkoneksi ke Access Point (Static IP digunakan)");
+            s_is_connected = true;
+            s_retry_num = 0;
+            s_auto_reconnect = true;
+            if (s_wifi_event_group) {
+                xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+            }
+        }
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         s_is_connected = false;
         
@@ -93,6 +126,16 @@ esp_err_t wifi_manager_start(const char *ssid, const char *password,
     s_wifi_event_group = xEventGroupCreate();
 
     _init_wifi_if_needed();
+
+    /* Terapkan mode IP sebelum mulai terkoneksi */
+    if (s_use_static_ip) {
+        esp_netif_dhcpc_stop(s_sta_netif);
+        esp_netif_set_ip_info(s_sta_netif, &s_static_ip_info);
+        ESP_LOGI(TAG, "Terapkan Static IP ke netif_sta");
+    } else {
+        esp_netif_dhcpc_start(s_sta_netif);
+        ESP_LOGI(TAG, "Terapkan DHCP ke netif_sta");
+    }
 
     /* Register event handlers */
     static bool s_event_handlers_registered = false;

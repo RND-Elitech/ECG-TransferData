@@ -237,6 +237,12 @@ static esp_err_t handler_save(httpd_req_t *req) {
     /* Uji koneksi WiFi sebelum menyimpan dan melakukan restart */
     ESP_LOGI(TAG, "Menguji koneksi WiFi ke SSID: '%s'...", wifi_ssid);
     
+    if (strcmp(ip_mode, "static") == 0 && ip_addr[0] != '\0') {
+        wifi_manager_set_static_ip(ip_addr, gateway, subnet);
+    } else {
+        wifi_manager_set_static_ip(NULL, NULL, NULL);
+    }
+
     // Gunakan timeout 15 detik (15000 ms) untuk pengujian
     esp_err_t conn_err = wifi_manager_start(wifi_ssid, wifi_pass, 15000);
     
